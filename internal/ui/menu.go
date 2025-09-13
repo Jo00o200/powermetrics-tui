@@ -71,26 +71,8 @@ func DrawCompactMenuBar(screen tcell.Screen, width int, currentView ViewType) in
 	views := GetViewInfo()
 
 	y := 0
-	// Draw title bar
-	title := "PowerMetrics TUI"
-	titleStyle := tcell.StyleDefault.Bold(true).Foreground(tcell.ColorWhite).Background(tcell.ColorDarkBlue)
-
-	// Fill the entire line with background
-	for x := 0; x < width; x++ {
-		screen.SetContent(x, y, ' ', nil, titleStyle)
-	}
-
-	// Draw title
+	// Draw view tabs directly on the first line
 	x := 2
-	for _, ch := range title {
-		screen.SetContent(x, y, ch, nil, titleStyle)
-		x++
-	}
-
-	y++
-
-	// Draw view tabs on the second line
-	x = 2
 	for i, view := range views {
 		isCurrent := ViewType(i) == currentView
 
@@ -119,6 +101,14 @@ func DrawCompactMenuBar(screen tcell.Screen, width int, currentView ViewType) in
 			screen.SetContent(x, y, ' ', nil, tcell.StyleDefault)
 			x++
 		}
+	}
+
+	y++
+
+	// Draw separator line
+	separatorStyle := tcell.StyleDefault.Foreground(tcell.ColorDarkGray)
+	for x := 0; x < width; x++ {
+		screen.SetContent(x, y, '─', nil, separatorStyle)
 	}
 
 	return y + 1 // Return the next available y position
