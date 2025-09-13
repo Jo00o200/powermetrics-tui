@@ -247,7 +247,7 @@ func DrawProcessesViewWithStartY(screen tcell.Screen, state *models.MetricsState
 	y += 2
 
 	// Header - properly aligned with exact spacing, with sparkline columns
-	header := fmt.Sprintf("%-8s %-28s %7s %12s %12s %11s  %-10s %-10s",
+	header := fmt.Sprintf("%-8s %-28s %7s %12s %12s %12s  %-10s %-10s",
 		"PID", "Process", "CPU%", "Memory", "Disk", "Network", "CPU Hist", "Mem Hist")
 	DrawText(screen, 2, y, header, tcell.StyleDefault.Bold(true))
 	y++
