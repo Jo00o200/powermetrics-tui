@@ -246,8 +246,10 @@ func DrawProcessesViewWithStartY(screen tcell.Screen, state *models.MetricsState
 	DrawText(screen, 2, y, "TOP PROCESSES", tcell.StyleDefault.Bold(true).Foreground(tcell.ColorTeal))
 	y += 2
 
-	// Header
-	DrawText(screen, 2, y, "PID     Process              CPU%    Memory    Disk    Network", tcell.StyleDefault.Bold(true))
+	// Header - properly aligned
+	header := fmt.Sprintf("%-8s %-25s %8s %10s %10s %10s",
+		"PID", "Process", "CPU%", "Memory", "Disk", "Network")
+	DrawText(screen, 2, y, header, tcell.StyleDefault.Bold(true))
 	y++
 
 	// Sort processes by CPU usage
@@ -263,9 +265,17 @@ func DrawProcessesViewWithStartY(screen tcell.Screen, state *models.MetricsState
 			break
 		}
 
-		line := fmt.Sprintf("%-7d %-20s %5.1f%% %7.1fMB %6.1fMB %7.1fMB",
-			proc.PID, proc.Name, proc.CPUPercent, proc.MemoryMB, proc.DiskMB, proc.NetworkMB)
+		// Truncate long process names
+		processName := proc.Name
+		if len(processName) > 24 {
+			processName = processName[:21] + "..."
+		}
 
+		// Format the line with proper alignment
+		line := fmt.Sprintf("%-8d %-25s %7.1f%% %9.1fMB %9.1fMB %9.1fMB",
+			proc.PID, processName, proc.CPUPercent, proc.MemoryMB, proc.DiskMB, proc.NetworkMB)
+
+		// Color based on CPU usage
 		color := tcell.ColorWhite
 		if proc.CPUPercent > 50 {
 			color = tcell.ColorRed
