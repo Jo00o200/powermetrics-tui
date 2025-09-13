@@ -72,7 +72,7 @@ Perfect for developers, power users, and anyone curious about their Mac's perfor
 
 ```bash
 # Clone the repository
-git clone https://github.com/yourusername/powermetrics-tui.git
+git clone https://github.com/sderosiaux/powermetrics-tui.git
 cd powermetrics-tui
 
 # Build the application
@@ -85,7 +85,7 @@ sudo cp powermetrics-tui /usr/local/bin/
 ### Install from Source
 
 ```bash
-go install github.com/yourusername/powermetrics-tui@latest
+go install github.com/sderosiaux/powermetrics-tui@latest
 ```
 
 ## 🚀 Usage
@@ -261,12 +261,12 @@ PID     Process                      CPU%    Memory      Disk      Network   CPU
 45678   Spotify                      12.3%   445 MB      0 MB/s    0.3 MB/s  ▅▆▇▆▅▄▃▄   ▃▃▃▃▃▃▃▃
 56789   Terminal                     8.7%    234 MB      1 MB/s    0 MB/s    ▁▂▃▄▃▂▁▁   ▂▂▂▂▂▂▂▂
 
-RECENTLY EXITED PROCESSES
-PID     Process                      LastCPU  MaxCPU    AvgCPU      MaxMem   Duration
-91234   swift build                   12.3%    89.5%     45.2%      1.2GB    2m ago
-92345   clang++                       8.5%     76.3%     38.1%      892MB    5m ago
-93456   node                          2.1%     34.2%     12.5%      445MB    8m ago
-94567   python3                       1.5%     23.1%     8.3%       234MB    12m ago
+RECENTLY EXITED PROCESSES (showing 4 of 4)
+Process                                  Occurrences     Last Seen
+swift build                                      3x        2m ago
+clang++                                         5x        5m ago
+node                                            2x        8m ago
+python3                                         1x       12m ago
 ```
 
 ### Thermal Monitoring
@@ -353,9 +353,9 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 
 ## 🔗 Links
 
-- [Report Issues](https://github.com/yourusername/powermetrics-tui/issues)
-- [Discussions](https://github.com/yourusername/powermetrics-tui/discussions)
-- [Wiki](https://github.com/yourusername/powermetrics-tui/wiki)
+- [Report Issues](https://github.com/sderosiaux/powermetrics-tui/issues)
+- [Discussions](https://github.com/sderosiaux/powermetrics-tui/discussions)
+- [Wiki](https://github.com/sderosiaux/powermetrics-tui/wiki)
 
 ---
 
