@@ -34,6 +34,7 @@ vendor/
 *.log
 powermetrics_debug.txt
 debug.txt
+sample_output.txt
 
 # Build artifacts
 dist/
