@@ -21,6 +21,43 @@ PowerMetrics TUI transforms macOS's powerful `powermetrics` utility into an intu
 
 Perfect for developers, power users, and anyone curious about their Mac's performance characteristics.
 
+## 📸 Screenshots & Examples
+
+### Processes View with History Sparklines
+```
+TOP PROCESSES (142 active, 4 exited)
+
+PID     Process                      CPU%    Memory      Disk      Network   CPU Hist   Mem Hist
+12345   Xcode                        45.2%   2.3 GB      12 MB/s   0.5 MB/s  ████▇▆▅▄   ▅▅▅▅▅▅▅▅
+23456   Chrome Helper (Renderer)     23.4%   892 MB      0 MB/s    2.1 MB/s  ▃▄▅▆▇███   ▆▆▆▇▇▇▇▇
+34567   kernel_task                  18.9%   1.2 GB      34 MB/s   0 MB/s    ▂▃▄▅▄▃▂▁   ████████
+45678   Spotify                      12.3%   445 MB      0 MB/s    0.3 MB/s  ▅▆▇▆▅▄▃▄   ▃▃▃▃▃▃▃▃
+
+RECENTLY EXITED PROCESSES (showing 4 of 4)
+Process                                  Occurrences     Last Seen
+swift build                                      3x        2m ago
+clang++                                         5x        5m ago
+node                                            2x        8m ago
+python3                                         1x       12m ago
+```
+
+### CPU Interrupts - Per-Core Breakdown
+```
+CPU0 (E):  IPI:   234/s  Timer:   890/s  Total:  1124/s  ██████░░░░  ▃▄▅▆▇▆▅▄▃▂
+CPU1 (E):  IPI:   156/s  Timer:   823/s  Total:   979/s  █████░░░░░  ▂▃▄▅▄▃▂▁▂▃
+CPU4 (P):  IPI:  1823/s  Timer:  1234/s  Total:  3057/s  ████████░░  ▇█████▇▆▅▄  ⚠️
+CPU5 (P):  IPI:  2156/s  Timer:  1456/s  Total:  3612/s  █████████░  ████████▇▆  🔴
+```
+
+### Power & Thermal Monitoring
+```
+POWER CONSUMPTION                        THERMAL STATUS
+CPU:     15.2W  ████████████░░░░  68%   Thermal Pressure: Fair ⚠️
+GPU:      4.9W  ████░░░░░░░░░░░░  27%   CPU P-Core: 78.3°C ████████░░ Warning
+ANE:      0.3W  █░░░░░░░░░░░░░░░   3%   GPU:        71.2°C ███████░░░ Elevated
+DRAM:     1.8W  ███░░░░░░░░░░░░░  10%   Fan: 4200 RPM (65% max)
+```
+
 ## ✨ Features
 
 ### 📊 Comprehensive Monitoring
@@ -194,115 +231,6 @@ powermetrics-tui
 # - Uneven distribution across cores points to IRQ affinity problems
 ```
 
-## 📸 Screenshots & Examples
-
-### Interrupts View - Per-CPU Breakdown
-```
-CPU INTERRUPTS (System interrupts per second)
-
-CPU0 (E):  IPI:   234/s  Timer:   890/s  Total:  1124/s  ██████░░░░  ▃▄▅▆▇▆▅▄▃▂
-CPU1 (E):  IPI:   156/s  Timer:   823/s  Total:   979/s  █████░░░░░  ▂▃▄▅▄▃▂▁▂▃
-CPU2 (E):  IPI:   189/s  Timer:   756/s  Total:   945/s  █████░░░░░  ▄▅▆▅▄▃▄▅▆▅
-CPU3 (E):  IPI:   203/s  Timer:   801/s  Total:  1004/s  █████░░░░░  ▅▆▇▆▅▄▃▄▅▆
-CPU4 (P):  IPI:  1823/s  Timer:  1234/s  Total:  3057/s  ████████░░  ▇█████▇▆▅▄  ⚠️
-CPU5 (P):  IPI:  2156/s  Timer:  1456/s  Total:  3612/s  █████████░  ████████▇▆  🔴
-CPU6 (P):  IPI:   567/s  Timer:   890/s  Total:  1457/s  ███████░░░  ▃▄▅▆▇▆▅▄▃▄
-CPU7 (P):  IPI:   432/s  Timer:   823/s  Total:  1255/s  ██████░░░░  ▄▅▄▃▂▃▄▅▆▅
-
-System Total: 12433 interrupts/s
-```
-
-### Power Consumption View
-```
-POWER CONSUMPTION (Energy usage - affects battery life)
-
-CPU:     15234.5 mW  ████████████████████████░░░░  (68% of max)
-  Processor power consumption
-
-GPU:      4892.3 mW  ████████░░░░░░░░░░░░░░░░░░░░  (27% of max)
-  Graphics processor power
-
-ANE:       312.5 mW  █░░░░░░░░░░░░░░░░░░░░░░░░░░░  (3% of max)
-  Apple Neural Engine - AI/ML accelerator
-
-DRAM:     1823.1 mW  ███░░░░░░░░░░░░░░░░░░░░░░░░░  (10% of max)
-  Memory power consumption
-
-Total System: 22.3W
-```
-
-### CPU Frequency View with Sparklines
-```
-CPU FREQUENCY (Clock speeds in MHz)
-
-E-Cores (Efficiency):
-  Core 0:  2064 MHz  ██████████████░░░░░░  ▃▄▅▆▇▆▅▄▃▂▁▂▃▄
-  Core 1:  1896 MHz  █████████████░░░░░░░  ▂▃▄▅▄▃▂▁▂▃▄▅▆▅
-  Core 2:  2104 MHz  ███████████████░░░░░  ▄▅▆▅▄▃▄▅▆▅▄▃▂▃
-  Core 3:  2248 MHz  ████████████████░░░░  ▅▆▇▆▅▄▃▄▅▆▇█▇▆
-
-P-Cores (Performance):
-  Core 4:  3824 MHz  █████████████████░░░  ▆▇████▇▆▅▄▅▆▇█
-  Core 5:  4056 MHz  ██████████████████░░  ████████▇▆▅▆▇█
-  Core 6:  2890 MHz  █████████████░░░░░░░  ▃▄▅▆▇▆▅▄▃▄▅▆▇▆
-  Core 7:  3124 MHz  ██████████████░░░░░░  ▄▅▆▇▆▅▄▃▄▅▆▇█▇
-
-GPU:      1398 MHz  ████████████░░░░░░░░
-```
-
-### Processes View with History Sparklines
-```
-PROCESSES (Top CPU consumers)
-
-PID     Process                      CPU%    Memory      Disk      Network   CPU Hist   Mem Hist
-12345   Xcode                        45.2%   2.3 GB      12 MB/s   0.5 MB/s  ████▇▆▅▄   ▅▅▅▅▅▅▅▅
-23456   Chrome Helper (Renderer)     23.4%   892 MB      0 MB/s    2.1 MB/s  ▃▄▅▆▇███   ▆▆▆▇▇▇▇▇
-34567   kernel_task                  18.9%   1.2 GB      34 MB/s   0 MB/s    ▂▃▄▅▄▃▂▁   ████████
-45678   Spotify                      12.3%   445 MB      0 MB/s    0.3 MB/s  ▅▆▇▆▅▄▃▄   ▃▃▃▃▃▃▃▃
-56789   Terminal                     8.7%    234 MB      1 MB/s    0 MB/s    ▁▂▃▄▃▂▁▁   ▂▂▂▂▂▂▂▂
-
-RECENTLY EXITED PROCESSES (showing 4 of 4)
-Process                                  Occurrences     Last Seen
-swift build                                      3x        2m ago
-clang++                                         5x        5m ago
-node                                            2x        8m ago
-python3                                         1x       12m ago
-```
-
-### Thermal Monitoring
-```
-THERMAL STATUS
-
-Thermal Pressure: Fair ⚠️
-  System is moderately throttling performance
-
-Temperature Sensors:
-  CPU P-Core 1:    78.3°C  ████████████████░░░░  Warning
-  CPU P-Core 2:    76.1°C  ███████████████░░░░░  Warning
-  CPU E-Core:      62.1°C  ████████████░░░░░░░░  Normal
-  GPU:             71.2°C  ██████████████░░░░░░  Elevated
-  Memory:          58.0°C  ███████████░░░░░░░░░  Normal
-  SSD:             45.3°C  █████████░░░░░░░░░░░  Normal
-
-Fan Speed: 4200 RPM (65% max)
-```
-
-### Battery Status
-```
-BATTERY STATUS
-
-State:           Discharging 🔋
-Charge:          67% ████████████████░░░░░░░░
-Time Remaining:  4h 23m
-Health:          92% (Normal)
-Cycle Count:     234
-
-Power Draw:      -18.4W
-Voltage:         12.84V
-Temperature:     31.2°C
-
-Charging History: ▅▄▃▂▁▁▂▃▄▅▆▇█████▇▆▅▄▃▂▁
-```
 
 ## 🛠️ Technical Details
 
