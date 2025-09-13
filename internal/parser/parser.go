@@ -351,8 +351,9 @@ func ParsePowerMetricsOutput(output string, state *models.MetricsState) {
 	currentPIDs := make(map[int]bool)
 	for _, proc := range newProcesses {
 		currentPIDs[proc.PID] = true
-		// Update last seen time for current processes
+		// Update last seen time and name for current processes
 		state.LastSeenPIDs[proc.PID] = currentTime
+		state.ProcessNames[proc.PID] = proc.Name
 	}
 
 	// Check for newly exited processes
@@ -361,13 +362,10 @@ func ParsePowerMetricsOutput(output string, state *models.MetricsState) {
 			// Process has exited if we haven't seen it this update
 			// But only add to exited list if we have its history
 			if cpuHistory, hasCPU := state.ProcessCPUHistory[pid]; hasCPU && len(cpuHistory) > 0 {
-				// Find the process name from our history (if available)
-				processName := fmt.Sprintf("PID-%d", pid)
-				for _, proc := range state.Processes {
-					if proc.PID == pid {
-						processName = proc.Name
-						break
-					}
+				// Get the process name from our stored names
+				processName := state.ProcessNames[pid]
+				if processName == "" {
+					processName = fmt.Sprintf("PID-%d", pid)
 				}
 
 				// Calculate statistics from history
@@ -420,6 +418,7 @@ func ParsePowerMetricsOutput(output string, state *models.MetricsState) {
 				delete(state.LastSeenPIDs, pid)
 				delete(state.ProcessCPUHistory, pid)
 				delete(state.ProcessMemHistory, pid)
+				delete(state.ProcessNames, pid)
 			}
 		}
 	}

@@ -67,7 +67,8 @@ type MetricsState struct {
 
 	// Recently exited processes tracking
 	RecentlyExited []ExitedProcessInfo
-	LastSeenPIDs   map[int]time.Time // Track when each PID was last seen
+	LastSeenPIDs   map[int]time.Time  // Track when each PID was last seen
+	ProcessNames   map[int]string     // Track process names by PID
 
 	// Historical data (circular buffers, 120 samples)
 	History      *HistoricalData
@@ -134,6 +135,7 @@ func NewMetricsState() *MetricsState {
 		PerCPUInterruptHistory: make(map[string][]float64),
 		RecentlyExited: make([]ExitedProcessInfo, 0),
 		LastSeenPIDs: make(map[int]time.Time),
+		ProcessNames: make(map[int]string),
 		History: &HistoricalData{
 			IPIHistory:        make([]int, 0, 120),
 			TimerHistory:      make([]int, 0, 120),

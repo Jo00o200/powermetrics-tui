@@ -327,13 +327,23 @@ func DrawFrequencyViewWithStartY(screen tcell.Screen, state *models.MetricsState
 	}
 }
 
+// min returns the minimum of two integers
+func min(a, b int) int {
+	if a < b {
+		return a
+	}
+	return b
+}
+
 // DrawProcessesViewWithStartY draws the top processes view with custom start Y
 func DrawProcessesViewWithStartY(screen tcell.Screen, state *models.MetricsState, width, height int, startY int) {
 	state.Mu.RLock()
 	defer state.Mu.RUnlock()
 
 	y := startY
-	DrawText(screen, 2, y, "TOP PROCESSES", tcell.StyleDefault.Bold(true).Foreground(tcell.ColorTeal))
+	// Show process counts in the title
+	title := fmt.Sprintf("TOP PROCESSES (%d active, %d exited)", len(state.Processes), len(state.RecentlyExited))
+	DrawText(screen, 2, y, title, tcell.StyleDefault.Bold(true).Foreground(tcell.ColorTeal))
 	y += 2
 
 	// Header - properly aligned with exact spacing, with sparkline columns
@@ -406,7 +416,9 @@ func DrawProcessesViewWithStartY(screen tcell.Screen, state *models.MetricsState
 	// Display recently exited processes if there's room
 	if len(state.RecentlyExited) > 0 && y < height-3 {
 		y += 2
-		DrawText(screen, 2, y, "RECENTLY EXITED PROCESSES", tcell.StyleDefault.Bold(true).Foreground(tcell.ColorGray))
+		exitedTitle := fmt.Sprintf("RECENTLY EXITED PROCESSES (showing %d of %d)",
+			min(5, len(state.RecentlyExited)), len(state.RecentlyExited))
+		DrawText(screen, 2, y, exitedTitle, tcell.StyleDefault.Bold(true).Foreground(tcell.ColorGray))
 		y++
 
 		// Header for exited processes
