@@ -65,6 +65,10 @@ type MetricsState struct {
 	ProcessCPUHistory map[int][]float64 // PID -> CPU history
 	ProcessMemHistory map[int][]float64 // PID -> Memory history
 
+	// Recently exited processes tracking
+	RecentlyExited []ExitedProcessInfo
+	LastSeenPIDs   map[int]time.Time // Track when each PID was last seen
+
 	// Historical data (circular buffers, 120 samples)
 	History      *HistoricalData
 	LastUpdate   time.Time
@@ -81,6 +85,21 @@ type ProcessInfo struct {
 	NetworkMB     float64
 	CPUHistory    []float64 // Last 10 samples for sparkline
 	MemoryHistory []float64 // Last 10 samples for sparkline
+}
+
+// ExitedProcessInfo represents a process that recently exited
+type ExitedProcessInfo struct {
+	PID           int
+	Name          string
+	LastCPU       float64   // Last observed CPU%
+	MaxCPU        float64   // Maximum CPU% observed
+	AvgCPU        float64   // Average CPU% over lifetime
+	LastMemory    float64   // Last observed memory (MB)
+	MaxMemory     float64   // Maximum memory observed
+	Duration      time.Duration // How long the process was active
+	ExitTime      time.Time // When the process exited
+	CPUHistory    []float64 // Final CPU history snapshot
+	MemoryHistory []float64 // Final memory history snapshot
 }
 
 // HistoricalData stores time series data
@@ -113,6 +132,8 @@ func NewMetricsState() *MetricsState {
 		PerCPUIPIs: make(map[string]float64),
 		PerCPUTimers: make(map[string]float64),
 		PerCPUInterruptHistory: make(map[string][]float64),
+		RecentlyExited: make([]ExitedProcessInfo, 0),
+		LastSeenPIDs: make(map[int]time.Time),
 		History: &HistoricalData{
 			IPIHistory:        make([]int, 0, 120),
 			TimerHistory:      make([]int, 0, 120),

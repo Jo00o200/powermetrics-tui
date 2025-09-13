@@ -402,6 +402,58 @@ func DrawProcessesViewWithStartY(screen tcell.Screen, state *models.MetricsState
 
 		y++
 	}
+
+	// Display recently exited processes if there's room
+	if len(state.RecentlyExited) > 0 && y < height-3 {
+		y += 2
+		DrawText(screen, 2, y, "RECENTLY EXITED PROCESSES", tcell.StyleDefault.Bold(true).Foreground(tcell.ColorGray))
+		y++
+
+		// Header for exited processes
+		exitHeader := fmt.Sprintf("%-8s %-28s %7s %8s %10s %10s  %-10s",
+			"PID", "Process", "LastCPU", "MaxCPU", "AvgCPU", "MaxMem", "Duration")
+		DrawText(screen, 2, y, exitHeader, tcell.StyleDefault.Bold(true).Foreground(tcell.ColorGray))
+		y++
+
+		// Display up to 5 most recent exited processes
+		displayCount := len(state.RecentlyExited)
+		if displayCount > 5 {
+			displayCount = 5
+		}
+		// Show most recent first
+		startIdx := len(state.RecentlyExited) - displayCount
+		for i := len(state.RecentlyExited) - 1; i >= startIdx && y < height-1; i-- {
+			proc := state.RecentlyExited[i]
+
+			// Truncate long process names
+			processName := proc.Name
+			if len(processName) > 27 {
+				processName = processName[:24] + "..."
+			}
+
+			// Format duration
+			duration := time.Since(proc.ExitTime)
+			durationStr := fmt.Sprintf("%dm ago", int(duration.Minutes()))
+			if duration.Minutes() < 1 {
+				durationStr = fmt.Sprintf("%ds ago", int(duration.Seconds()))
+			} else if duration.Hours() >= 1 {
+				durationStr = fmt.Sprintf("%dh ago", int(duration.Hours()))
+			}
+
+			line := fmt.Sprintf("%-8d %-28s %6.1f%% %7.1f%% %9.1f%% %8.1fMB  %-10s",
+				proc.PID, processName, proc.LastCPU, proc.MaxCPU, proc.AvgCPU, proc.MaxMemory, durationStr)
+
+			// Use gray color for exited processes
+			DrawText(screen, 2, y, line, tcell.StyleDefault.Foreground(tcell.ColorGray))
+
+			// Draw final CPU history sparkline if available
+			if len(proc.CPUHistory) > 0 {
+				DrawCPUSparkline(screen, 88, y, 10, proc.CPUHistory, tcell.ColorGray)
+			}
+
+			y++
+		}
+	}
 }
 
 // DrawNetworkViewWithStartY draws the network I/O view with custom start Y

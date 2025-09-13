@@ -1,9 +1,11 @@
 package parser
 
 import (
+	"fmt"
 	"regexp"
 	"strconv"
 	"strings"
+	"time"
 
 	"powermetrics-tui/internal/models"
 )
@@ -344,29 +346,86 @@ func ParsePowerMetricsOutput(output string, state *models.MetricsState) {
 		}
 	}
 
-	// Update the processes list with the new data
-	state.Processes = newProcesses
-
-	// Clean up history for processes that no longer exist
-	// Keep history for a bit in case process comes back
+	// Track recently exited processes
+	currentTime := time.Now()
 	currentPIDs := make(map[int]bool)
 	for _, proc := range newProcesses {
 		currentPIDs[proc.PID] = true
+		// Update last seen time for current processes
+		state.LastSeenPIDs[proc.PID] = currentTime
 	}
 
-	// Only clean up if we have too many old processes (memory management)
-	if len(state.ProcessCPUHistory) > len(currentPIDs)*2 {
-		for pid := range state.ProcessCPUHistory {
-			if !currentPIDs[pid] {
-				// Check if this PID hasn't been seen for several updates
-				// For now, just remove if not in current list and we have too many
-				if len(state.ProcessCPUHistory) > 200 {
-					delete(state.ProcessCPUHistory, pid)
-					delete(state.ProcessMemHistory, pid)
+	// Check for newly exited processes
+	for pid, lastSeen := range state.LastSeenPIDs {
+		if !currentPIDs[pid] {
+			// Process has exited if we haven't seen it this update
+			// But only add to exited list if we have its history
+			if cpuHistory, hasCPU := state.ProcessCPUHistory[pid]; hasCPU && len(cpuHistory) > 0 {
+				// Find the process name from our history (if available)
+				processName := fmt.Sprintf("PID-%d", pid)
+				for _, proc := range state.Processes {
+					if proc.PID == pid {
+						processName = proc.Name
+						break
+					}
 				}
+
+				// Calculate statistics from history
+				var maxCPU, avgCPU, totalCPU float64
+				for _, cpu := range cpuHistory {
+					if cpu > maxCPU {
+						maxCPU = cpu
+					}
+					totalCPU += cpu
+				}
+				if len(cpuHistory) > 0 {
+					avgCPU = totalCPU / float64(len(cpuHistory))
+				}
+
+				var maxMem, lastMem float64
+				if memHistory, hasMem := state.ProcessMemHistory[pid]; hasMem && len(memHistory) > 0 {
+					lastMem = memHistory[len(memHistory)-1]
+					for _, mem := range memHistory {
+						if mem > maxMem {
+							maxMem = mem
+						}
+					}
+				}
+
+				// Add to recently exited list
+				exitedProc := models.ExitedProcessInfo{
+					PID:           pid,
+					Name:          processName,
+					LastCPU:       cpuHistory[len(cpuHistory)-1],
+					MaxCPU:        maxCPU,
+					AvgCPU:        avgCPU,
+					LastMemory:    lastMem,
+					MaxMemory:     maxMem,
+					Duration:      currentTime.Sub(lastSeen),
+					ExitTime:      currentTime,
+					CPUHistory:    append([]float64{}, cpuHistory...), // Copy history
+					MemoryHistory: append([]float64{}, state.ProcessMemHistory[pid]...),
+				}
+
+				state.RecentlyExited = append(state.RecentlyExited, exitedProc)
+
+				// Keep only the last 20 recently exited processes
+				if len(state.RecentlyExited) > 20 {
+					state.RecentlyExited = state.RecentlyExited[1:]
+				}
+			}
+
+			// Clean up old entries from LastSeenPIDs
+			if currentTime.Sub(lastSeen) > 5*time.Minute {
+				delete(state.LastSeenPIDs, pid)
+				delete(state.ProcessCPUHistory, pid)
+				delete(state.ProcessMemHistory, pid)
 			}
 		}
 	}
+
+	// Update the processes list with the new data
+	state.Processes = newProcesses
 
 	// Organize CPU frequencies based on what we detected
 	organizeCPUFrequencies(state)
