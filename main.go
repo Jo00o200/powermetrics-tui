@@ -17,7 +17,7 @@ import (
 )
 
 var (
-	samplers     = flag.String("samplers", "default", "Comma-separated list of samplers (interrupts,cpu_power,gpu_power,thermal,battery,tasks,all,default)")
+	samplers     = flag.String("samplers", "all", "Comma-separated list of samplers (interrupts,cpu_power,gpu_power,thermal,battery,tasks,all,default)")
 	interval     = flag.Int("interval", 1000, "Sampling interval in milliseconds")
 	combined     = flag.Bool("combined", false, "Show all metrics in combined view")
 	debug        = flag.Bool("debug", false, "Enable debug output")
@@ -129,7 +129,7 @@ func determineSamplers() string {
 	}
 
 	if len(result) == 0 {
-		return "default"
+		return "all"
 	}
 
 	// Determine initial view based on samplers
