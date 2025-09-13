@@ -59,7 +59,31 @@ func TestParsePowerMetricsOutput(t *testing.T) {
 		if state.IPICount == 0 && state.TimerCount == 0 {
 			t.Error("Expected interrupts to be parsed, but both IPI and Timer are 0")
 		}
-		t.Logf("IPI: %d, Timer: %d", state.IPICount, state.TimerCount)
+		t.Logf("Total IPI: %d, Timer: %d", state.IPICount, state.TimerCount)
+
+		// Test per-CPU interrupts
+		if len(state.PerCPUIPIs) > 0 {
+			t.Logf("Per-CPU IPI breakdown:")
+			for cpu, ipi := range state.PerCPUIPIs {
+				t.Logf("  %s: IPI=%.1f/s", cpu, ipi)
+			}
+		} else {
+			t.Log("No per-CPU IPI data parsed")
+		}
+
+		if len(state.PerCPUTimers) > 0 {
+			t.Logf("Per-CPU Timer breakdown:")
+			for cpu, timer := range state.PerCPUTimers {
+				t.Logf("  %s: Timer=%.1f/s", cpu, timer)
+			}
+		}
+
+		if len(state.PerCPUInterrupts) > 0 {
+			t.Logf("Per-CPU Total interrupts:")
+			for cpu, total := range state.PerCPUInterrupts {
+				t.Logf("  %s: Total=%.1f/s", cpu, total)
+			}
+		}
 	})
 
 	// Test CPU power parsing
@@ -166,6 +190,8 @@ func TestInterruptRegex(t *testing.T) {
 	// Recreate the regex patterns
 	ipiTestRegex := regexp.MustCompile(`\|-> IPI:\s+([0-9.]+)\s+interrupts/sec`)
 	timerTestRegex := regexp.MustCompile(`\|-> TIMER:\s+([0-9.]+)\s+interrupts/sec`)
+	cpuTestRegex := regexp.MustCompile(`^CPU (\d+):$`)
+	totalIRQTestRegex := regexp.MustCompile(`Total IRQ:\s+([0-9.]+)\s+interrupts/sec`)
 
 	testCases := []struct {
 		line     string
@@ -184,6 +210,18 @@ func TestInterruptRegex(t *testing.T) {
 			expected: "863.59",
 			regex:    timerTestRegex,
 			name:     "Timer rate",
+		},
+		{
+			line:     "CPU 0:",
+			expected: "0",
+			regex:    cpuTestRegex,
+			name:     "CPU identifier",
+		},
+		{
+			line:     "	Total IRQ: 2057.23 interrupts/sec",
+			expected: "2057.23",
+			regex:    totalIRQTestRegex,
+			name:     "Total IRQ rate",
 		},
 	}
 

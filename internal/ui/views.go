@@ -76,22 +76,63 @@ func DrawInterruptsViewWithHelp(screen tcell.Screen, state *models.MetricsState,
 		y += 2
 	}
 
-	// Total Interrupts with description
-	DrawText(screen, 2, y, fmt.Sprintf("Total: %8d/s", state.TotalInterrupts), tcell.StyleDefault)
-	DrawBar(screen, 25, y, width-30, float64(state.TotalInterrupts), 20000, tcell.ColorYellow)
-	y++
-	if showHelp {
-		DrawText(screen, 4, y, "All interrupt events combined", tcell.StyleDefault.Foreground(tcell.ColorGray).Italic(true))
+	// Per-CPU breakdown if available
+	if len(state.PerCPUIPIs) > 0 {
+		DrawText(screen, 2, y, "Per-CPU Breakdown:", tcell.StyleDefault.Bold(true))
 		y++
-	}
 
-	// Sparkline for Total history
-	if len(state.History.TotalHistory) > 0 {
-		totalFloat := make([]float64, len(state.History.TotalHistory))
-		for i, v := range state.History.TotalHistory {
-			totalFloat[i] = float64(v)
+		// Sort CPU keys for consistent display
+		var cpuKeys []string
+		for cpu := range state.PerCPUIPIs {
+			cpuKeys = append(cpuKeys, cpu)
 		}
-		DrawSparkline(screen, 25, y, width-30, totalFloat, tcell.ColorYellow)
+		sort.Strings(cpuKeys)
+
+		// Display up to 10 CPUs
+		for i, cpu := range cpuKeys {
+			if i >= 10 || y >= height-2 {
+				break
+			}
+
+			ipi := state.PerCPUIPIs[cpu]
+			timer := state.PerCPUTimers[cpu]
+			total := state.PerCPUInterrupts[cpu]
+
+			// Format: CPU0: Total: 2057/s (IPI: 1197/s, Timer: 713/s)
+			text := fmt.Sprintf("%-5s Total:%5.0f/s  IPI:%5.0f/s  Timer:%5.0f/s",
+				cpu+":", total, ipi, timer)
+
+			// Color based on activity level
+			color := tcell.ColorWhite
+			if total > 2000 {
+				color = tcell.ColorRed
+			} else if total > 1000 {
+				color = tcell.ColorYellow
+			} else if total > 500 {
+				color = tcell.ColorGreen
+			}
+
+			DrawText(screen, 4, y, text, tcell.StyleDefault.Foreground(color))
+			y++
+		}
+	} else {
+		// Fallback to total if no per-CPU data
+		DrawText(screen, 2, y, fmt.Sprintf("Total: %8d/s", state.TotalInterrupts), tcell.StyleDefault)
+		DrawBar(screen, 25, y, width-30, float64(state.TotalInterrupts), 20000, tcell.ColorYellow)
+		y++
+		if showHelp {
+			DrawText(screen, 4, y, "All interrupt events combined", tcell.StyleDefault.Foreground(tcell.ColorGray).Italic(true))
+			y++
+		}
+
+		// Sparkline for Total history
+		if len(state.History.TotalHistory) > 0 {
+			totalFloat := make([]float64, len(state.History.TotalHistory))
+			for i, v := range state.History.TotalHistory {
+				totalFloat[i] = float64(v)
+			}
+			DrawSparkline(screen, 25, y, width-30, totalFloat, tcell.ColorYellow)
+		}
 	}
 }
 
@@ -182,18 +223,28 @@ func DrawFrequencyViewWithStartY(screen tcell.Screen, state *models.MetricsState
 
 	// E-Core frequencies (Apple Silicon)
 	if len(state.ECoreFreq) > 0 {
+		// Find max E-core frequency from history (or use sensible default)
+		maxECoreFreq := 2748.0 // M3 max, but we'll adjust based on observed values
+		for _, history := range state.ECoreFreqHistory {
+			for _, freq := range history {
+				if freq > maxECoreFreq {
+					maxECoreFreq = freq * 1.1 // Add 10% headroom
+				}
+			}
+		}
+
 		DrawText(screen, 2, y, "E-Cores (Efficiency):", tcell.StyleDefault.Bold(true))
 		y++
 		for i, freq := range state.ECoreFreq {
 			if freq > 0 { // Only show active cores
 				label := fmt.Sprintf("E%d: %4d MHz", i, freq)
 				DrawText(screen, 4, y, label, tcell.StyleDefault)
-				DrawBar(screen, 25, y, width-30, float64(freq), 3000, tcell.ColorBlue)
+				DrawBar(screen, 25, y, width-30, float64(freq), maxECoreFreq, tcell.ColorBlue)
 				y++
 
-				// Draw sparkline for this core's frequency history
+				// Draw sparkline for this core's frequency history with lighter color
 				if history, ok := state.ECoreFreqHistory[i]; ok && len(history) > 0 {
-					DrawSparkline(screen, 25, y, width-30, history, tcell.ColorBlue)
+					DrawSparkline(screen, 25, y, width-30, history, tcell.ColorDarkCyan)
 					y++
 				}
 			}
@@ -203,8 +254,24 @@ func DrawFrequencyViewWithStartY(screen tcell.Screen, state *models.MetricsState
 
 	// P-Core frequencies (Apple Silicon) or all cores (Intel)
 	if len(state.PCoreFreq) > 0 {
+		// Find max P-core frequency from history (or use sensible default)
+		maxPCoreFreq := 4056.0 // M3 Pro/Max can reach this
+		isIntel := len(state.ECoreFreq) == 0
+		if isIntel {
+			maxPCoreFreq = 5000.0 // Intel can go higher
+		}
+
+		// Adjust based on observed values
+		for _, history := range state.PCoreFreqHistory {
+			for _, freq := range history {
+				if freq > maxPCoreFreq {
+					maxPCoreFreq = freq * 1.1 // Add 10% headroom
+				}
+			}
+		}
+
 		label := "P-Cores (Performance):"
-		if len(state.ECoreFreq) == 0 {
+		if isIntel {
 			// No E-cores detected, this is likely an Intel Mac
 			label = "CPU Cores:"
 		}
@@ -213,21 +280,21 @@ func DrawFrequencyViewWithStartY(screen tcell.Screen, state *models.MetricsState
 		for i, freq := range state.PCoreFreq {
 			if freq > 0 { // Only show active cores
 				coreLabel := fmt.Sprintf("P%d: %4d MHz", i, freq)
-				if len(state.ECoreFreq) == 0 {
+				if isIntel {
 					coreLabel = fmt.Sprintf("Core %d: %4d MHz", i, freq)
 				}
 				DrawText(screen, 4, y, coreLabel, tcell.StyleDefault)
-				// Higher max for P-cores
-				maxFreq := 4500.0
-				if len(state.ECoreFreq) == 0 {
-					maxFreq = 5000.0 // Intel cores can go higher
-				}
-				DrawBar(screen, 25, y, width-30, float64(freq), maxFreq, tcell.ColorRed)
+				DrawBar(screen, 25, y, width-30, float64(freq), maxPCoreFreq, tcell.ColorRed)
 				y++
 
-				// Draw sparkline for this core's frequency history
+				// Draw sparkline for this core's frequency history with lighter color
 				if history, ok := state.PCoreFreqHistory[i]; ok && len(history) > 0 {
-					DrawSparkline(screen, 25, y, width-30, history, tcell.ColorRed)
+					// Use a lighter shade for sparklines
+					sparkColor := tcell.ColorIndianRed
+					if isIntel {
+						sparkColor = tcell.ColorOrangeRed
+					}
+					DrawSparkline(screen, 25, y, width-30, history, sparkColor)
 					y++
 				}
 			}

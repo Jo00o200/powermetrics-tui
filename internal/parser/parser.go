@@ -14,6 +14,9 @@ var (
 	timerRateRegex  = regexp.MustCompile(`\|-> TIMER:\s+([0-9.]+)\s+interrupts/sec`)
 	totalRateRegex  = regexp.MustCompile(`Total IRQ:\s+([0-9.]+)\s+interrupts/sec`)
 
+	// Per-CPU interrupt patterns
+	cpuInterruptRegex = regexp.MustCompile(`^CPU (\d+):$`)
+
 	// Old format: absolute counts (keeping for compatibility)
 	ipiRegex         = regexp.MustCompile(`CPU (\d+) IPI:\s+(\d+)`)
 	timerRegex       = regexp.MustCompile(`CPU (\d+) Timer:\s+(\d+)`)
@@ -76,6 +79,12 @@ func ParsePowerMetricsOutput(output string, state *models.MetricsState) {
 	newProcesses := []models.ProcessInfo{}
 
 	inProcessSection := false
+	currentCPU := ""  // Track which CPU we're parsing interrupts for
+
+	// Clear per-CPU maps
+	state.PerCPUInterrupts = make(map[string]float64)
+	state.PerCPUIPIs = make(map[string]float64)
+	state.PerCPUTimers = make(map[string]float64)
 
 	for _, line := range lines {
 		line = strings.TrimSpace(line)
@@ -96,22 +105,40 @@ func ParsePowerMetricsOutput(output string, state *models.MetricsState) {
 			inProcessSection = false
 		}
 
+		// Check for CPU interrupt header (e.g., "CPU 0:")
+		if matches := cpuInterruptRegex.FindStringSubmatch(line); matches != nil {
+			currentCPU = "CPU" + matches[1]
+			continue
+		}
+
 		// Parse interrupts - new format (interrupts/sec)
 		if matches := ipiRateRegex.FindStringSubmatch(line); matches != nil {
 			if val, err := strconv.ParseFloat(matches[1], 64); err == nil {
 				ipiTotal += val
+				// If we have a current CPU, track per-CPU data
+				if currentCPU != "" {
+					state.PerCPUIPIs[currentCPU] = val
+				}
 			}
 		}
 
 		if matches := timerRateRegex.FindStringSubmatch(line); matches != nil {
 			if val, err := strconv.ParseFloat(matches[1], 64); err == nil {
 				timerTotal += val
+				// If we have a current CPU, track per-CPU data
+				if currentCPU != "" {
+					state.PerCPUTimers[currentCPU] = val
+				}
 			}
 		}
 
 		if matches := totalRateRegex.FindStringSubmatch(line); matches != nil {
 			if val, err := strconv.ParseFloat(matches[1], 64); err == nil {
 				interrupts += val
+				// If we have a current CPU, track per-CPU data
+				if currentCPU != "" {
+					state.PerCPUInterrupts[currentCPU] = val
+				}
 			}
 		}
 
