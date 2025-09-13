@@ -23,7 +23,8 @@ var (
 	anePowerRegex    = regexp.MustCompile(`(?:ANE Power|ANE Energy|Combined Power \(ANE\)):\s+([0-9.]+)\s*mW`)
 	dramPowerRegex   = regexp.MustCompile(`(?:DRAM Power|DRAM Energy|Combined Power \(DRAM\)):\s+([0-9.]+)\s*mW`)
 	systemPowerRegex = regexp.MustCompile(`(?:Combined Power|System Power|System Average).*?:\s+([0-9.]+)\s*(?:mW|Watts)`)
-	thermalRegex     = regexp.MustCompile(`Thermal Pressure:\s+(\w+)`)
+	// Thermal pattern - Updated for actual format: "Current pressure level: Nominal"
+	thermalRegex     = regexp.MustCompile(`Current pressure level:\s+(\w+)`)
 	tempRegex        = regexp.MustCompile(`([^:]+):\s+([0-9.]+)\s*(?:C|°C)`)
 	batteryRegex     = regexp.MustCompile(`(?:Battery charge|State of Charge|percent_charge):\s+([0-9.]+)(?:%)?`)
 	batteryStateRegex = regexp.MustCompile(`Battery state:\s+(\w+)`)
@@ -37,12 +38,13 @@ var (
 	cpuFreqRegex   = regexp.MustCompile(`CPU (\d+) frequency:\s+([0-9]+)\s*MHz`)
 
 	// Network patterns
-	networkInRegex  = regexp.MustCompile(`(?:Bytes In|RX Bytes|Network In):\s+([0-9.]+)\s*(?:MB|KB|GB|bytes)`)
-	networkOutRegex = regexp.MustCompile(`(?:Bytes Out|TX Bytes|Network Out):\s+([0-9.]+)\s*(?:MB|KB|GB|bytes)`)
+	// Network patterns - Updated for actual format: "in: 70.77 packets/s, 69338.38 bytes/s"
+	networkInRegex  = regexp.MustCompile(`in:\s+[0-9.]+\s+packets/s,\s+([0-9.]+)\s+bytes/s`)
+	networkOutRegex = regexp.MustCompile(`out:\s+[0-9.]+\s+packets/s,\s+([0-9.]+)\s+bytes/s`)
 
-	// Disk I/O patterns
-	diskReadRegex  = regexp.MustCompile(`(?:Disk Read|Read Bytes|Bytes Read):\s+([0-9.]+)\s*(?:MB|KB|GB|bytes)`)
-	diskWriteRegex = regexp.MustCompile(`(?:Disk Write|Write Bytes|Bytes Written):\s+([0-9.]+)\s*(?:MB|KB|GB|bytes)`)
+	// Disk I/O patterns - Updated for actual format: "read: 0.00 ops/s 0.00 KBytes/s"
+	diskReadRegex  = regexp.MustCompile(`read:\s+[0-9.]+\s+ops/s\s+([0-9.]+)\s+KBytes/s`)
+	diskWriteRegex = regexp.MustCompile(`write:\s+[0-9.]+\s+ops/s\s+([0-9.]+)\s+KBytes/s`)
 
 	// Memory patterns
 	memoryUsedRegex  = regexp.MustCompile(`(?:Memory Used|Physical Memory Used):\s+([0-9.]+)\s*(?:MB|GB)`)
@@ -202,29 +204,29 @@ func ParsePowerMetricsOutput(output string, state *models.MetricsState) {
 			}
 		}
 
-		// Parse network
+		// Parse network (bytes/s to KB/s)
 		if matches := networkInRegex.FindStringSubmatch(line); matches != nil {
 			if val, err := strconv.ParseFloat(matches[1], 64); err == nil {
-				state.NetworkIn = convertToMB(val, line)
+				state.NetworkIn = val / 1024.0 // Convert bytes/s to KB/s
 			}
 		}
 
 		if matches := networkOutRegex.FindStringSubmatch(line); matches != nil {
 			if val, err := strconv.ParseFloat(matches[1], 64); err == nil {
-				state.NetworkOut = convertToMB(val, line)
+				state.NetworkOut = val / 1024.0 // Convert bytes/s to KB/s
 			}
 		}
 
-		// Parse disk I/O
+		// Parse disk I/O (KB/s to MB/s)
 		if matches := diskReadRegex.FindStringSubmatch(line); matches != nil {
 			if val, err := strconv.ParseFloat(matches[1], 64); err == nil {
-				state.DiskRead = convertToMB(val, line)
+				state.DiskRead = val / 1024.0 // Convert KB/s to MB/s
 			}
 		}
 
 		if matches := diskWriteRegex.FindStringSubmatch(line); matches != nil {
 			if val, err := strconv.ParseFloat(matches[1], 64); err == nil {
-				state.DiskWrite = convertToMB(val, line)
+				state.DiskWrite = val / 1024.0 // Convert KB/s to MB/s
 			}
 		}
 
