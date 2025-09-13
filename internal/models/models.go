@@ -19,6 +19,9 @@ type MetricsState struct {
 	PerCPUIPIs       map[string]float64 // CPU identifier -> IPI rate
 	PerCPUTimers     map[string]float64 // CPU identifier -> Timer rate
 
+	// Per-CPU interrupt history for sparklines
+	PerCPUInterruptHistory map[string][]float64 // CPU identifier -> interrupt history
+
 	// Power metrics
 	CPUPower    float64
 	GPUPower    float64
@@ -109,6 +112,7 @@ func NewMetricsState() *MetricsState {
 		PerCPUInterrupts: make(map[string]float64),
 		PerCPUIPIs: make(map[string]float64),
 		PerCPUTimers: make(map[string]float64),
+		PerCPUInterruptHistory: make(map[string][]float64),
 		History: &HistoricalData{
 			IPIHistory:        make([]int, 0, 120),
 			TimerHistory:      make([]int, 0, 120),

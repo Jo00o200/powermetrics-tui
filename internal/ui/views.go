@@ -104,15 +104,26 @@ func DrawInterruptsViewWithHelp(screen tcell.Screen, state *models.MetricsState,
 
 			// Color based on activity level
 			color := tcell.ColorWhite
+			sparkColor := tcell.ColorDarkGray
 			if total > 2000 {
 				color = tcell.ColorRed
+				sparkColor = tcell.ColorRed
 			} else if total > 1000 {
 				color = tcell.ColorYellow
+				sparkColor = tcell.ColorYellow
 			} else if total > 500 {
 				color = tcell.ColorGreen
+				sparkColor = tcell.ColorGreen
 			}
 
 			DrawText(screen, 4, y, text, tcell.StyleDefault.Foreground(color))
+
+			// Draw sparkline for this CPU's interrupt history
+			if history, ok := state.PerCPUInterruptHistory[cpu]; ok && len(history) > 0 {
+				// Draw a compact sparkline next to the text
+				DrawSparkline(screen, 58, y, 20, history, sparkColor)
+			}
+
 			y++
 		}
 	} else {

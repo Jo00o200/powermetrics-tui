@@ -397,6 +397,14 @@ func ParsePowerMetricsOutput(output string, state *models.MetricsState) {
 		state.TotalInterrupts = int(interrupts)
 	}
 
+	// Update per-CPU interrupt history
+	for cpu, total := range state.PerCPUInterrupts {
+		if state.PerCPUInterruptHistory[cpu] == nil {
+			state.PerCPUInterruptHistory[cpu] = make([]float64, 0, 30)
+		}
+		state.PerCPUInterruptHistory[cpu] = models.AddToHistory(state.PerCPUInterruptHistory[cpu], total, 30)
+	}
+
 	// Update history
 	state.History.IPIHistory = models.AddToIntHistory(state.History.IPIHistory, state.IPICount, state.History.MaxHistory)
 	state.History.TimerHistory = models.AddToIntHistory(state.History.TimerHistory, state.TimerCount, state.History.MaxHistory)
