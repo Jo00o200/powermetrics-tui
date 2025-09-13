@@ -190,6 +190,12 @@ func DrawFrequencyViewWithStartY(screen tcell.Screen, state *models.MetricsState
 				DrawText(screen, 4, y, label, tcell.StyleDefault)
 				DrawBar(screen, 25, y, width-30, float64(freq), 3000, tcell.ColorBlue)
 				y++
+
+				// Draw sparkline for this core's frequency history
+				if history, ok := state.ECoreFreqHistory[i]; ok && len(history) > 0 {
+					DrawSparkline(screen, 25, y, width-30, history, tcell.ColorBlue)
+					y++
+				}
 			}
 		}
 		y++
@@ -218,6 +224,12 @@ func DrawFrequencyViewWithStartY(screen tcell.Screen, state *models.MetricsState
 				}
 				DrawBar(screen, 25, y, width-30, float64(freq), maxFreq, tcell.ColorRed)
 				y++
+
+				// Draw sparkline for this core's frequency history
+				if history, ok := state.PCoreFreqHistory[i]; ok && len(history) > 0 {
+					DrawSparkline(screen, 25, y, width-30, history, tcell.ColorRed)
+					y++
+				}
 			}
 		}
 		y++

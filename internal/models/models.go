@@ -27,6 +27,10 @@ type MetricsState struct {
 	GPUFreq    int
 	AllCpuFreq map[int]int // Temporary storage for all CPU frequencies
 
+	// CPU frequency history (per core)
+	ECoreFreqHistory map[int][]float64 // Core index -> frequency history
+	PCoreFreqHistory map[int][]float64 // Core index -> frequency history
+
 	// Network
 	NetworkIn  float64
 	NetworkOut float64
@@ -95,6 +99,8 @@ func NewMetricsState() *MetricsState {
 		Temperature: make(map[string]float64),
 		ProcessCPUHistory: make(map[int][]float64),
 		ProcessMemHistory: make(map[int][]float64),
+		ECoreFreqHistory: make(map[int][]float64),
+		PCoreFreqHistory: make(map[int][]float64),
 		History: &HistoricalData{
 			IPIHistory:        make([]int, 0, 120),
 			TimerHistory:      make([]int, 0, 120),

@@ -344,6 +344,21 @@ func ParsePowerMetricsOutput(output string, state *models.MetricsState) {
 	// Organize CPU frequencies based on what we detected
 	organizeCPUFrequencies(state)
 
+	// Update CPU frequency history for sparklines
+	for i, freq := range state.ECoreFreq {
+		if state.ECoreFreqHistory[i] == nil {
+			state.ECoreFreqHistory[i] = make([]float64, 0, 30)
+		}
+		state.ECoreFreqHistory[i] = models.AddToHistory(state.ECoreFreqHistory[i], float64(freq), 30)
+	}
+
+	for i, freq := range state.PCoreFreq {
+		if state.PCoreFreqHistory[i] == nil {
+			state.PCoreFreqHistory[i] = make([]float64, 0, 30)
+		}
+		state.PCoreFreqHistory[i] = models.AddToHistory(state.PCoreFreqHistory[i], float64(freq), 30)
+	}
+
 	// Update interrupt totals (convert float rates to int for display)
 	if ipiTotal > 0 {
 		state.IPICount = int(ipiTotal)
