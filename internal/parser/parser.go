@@ -291,19 +291,25 @@ func ParsePowerMetricsOutput(output string, state *models.MetricsState) {
 				cpuPercent := cpuMs / 10.0
 
 				// Update process history
-				if state.ProcessHistory[pid] == nil {
-					state.ProcessHistory[pid] = make([]float64, 0, 10)
+				if state.ProcessCPUHistory[pid] == nil {
+					state.ProcessCPUHistory[pid] = make([]float64, 0, 10)
 				}
-				state.ProcessHistory[pid] = models.AddToHistory(state.ProcessHistory[pid], cpuPercent, 10)
+				state.ProcessCPUHistory[pid] = models.AddToHistory(state.ProcessCPUHistory[pid], cpuPercent, 10)
+
+				if state.ProcessMemHistory[pid] == nil {
+					state.ProcessMemHistory[pid] = make([]float64, 0, 10)
+				}
+				state.ProcessMemHistory[pid] = models.AddToHistory(state.ProcessMemHistory[pid], userPercent, 10)
 
 				state.Processes = append(state.Processes, models.ProcessInfo{
-					PID:        pid,
-					Name:       name,
-					CPUPercent: cpuPercent,
-					MemoryMB:   userPercent, // Using User% as a proxy for now
-					DiskMB:     0,
-					NetworkMB:  0,
-					CPUHistory: state.ProcessHistory[pid],
+					PID:           pid,
+					Name:          name,
+					CPUPercent:    cpuPercent,
+					MemoryMB:      userPercent, // Using User% as a proxy for now
+					DiskMB:        0,
+					NetworkMB:     0,
+					CPUHistory:    state.ProcessCPUHistory[pid],
+					MemoryHistory: state.ProcessMemHistory[pid],
 				})
 			}
 		}
