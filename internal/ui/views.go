@@ -246,9 +246,9 @@ func DrawProcessesViewWithStartY(screen tcell.Screen, state *models.MetricsState
 	DrawText(screen, 2, y, "TOP PROCESSES", tcell.StyleDefault.Bold(true).Foreground(tcell.ColorTeal))
 	y += 2
 
-	// Header - properly aligned with exact spacing
-	header := fmt.Sprintf("%-8s %-28s %7s %11s %11s %11s",
-		"PID", "Process", "CPU%", "Memory", "Disk", "Network")
+	// Header - properly aligned with exact spacing, with sparkline column
+	header := fmt.Sprintf("%-8s %-28s %7s %11s %11s %11s %12s",
+		"PID", "Process", "CPU%", "Memory", "Disk", "Network", "CPU History")
 	DrawText(screen, 2, y, header, tcell.StyleDefault.Bold(true))
 	y++
 
@@ -277,13 +277,23 @@ func DrawProcessesViewWithStartY(screen tcell.Screen, state *models.MetricsState
 
 		// Color based on CPU usage
 		color := tcell.ColorWhite
+		sparkColor := tcell.ColorTeal
 		if proc.CPUPercent > 50 {
 			color = tcell.ColorRed
+			sparkColor = tcell.ColorRed
 		} else if proc.CPUPercent > 25 {
 			color = tcell.ColorYellow
+			sparkColor = tcell.ColorYellow
 		}
 
 		DrawText(screen, 2, y, line, tcell.StyleDefault.Foreground(color))
+
+		// Draw sparkline for CPU history
+		if len(proc.CPUHistory) > 0 {
+			sparkline := RenderSparkline(proc.CPUHistory, 10)
+			DrawText(screen, 98, y, sparkline, tcell.StyleDefault.Foreground(sparkColor))
+		}
+
 		y++
 	}
 }

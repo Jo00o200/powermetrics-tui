@@ -50,6 +50,7 @@ type MetricsState struct {
 
 	// Process tracking
 	Processes []ProcessInfo
+	ProcessHistory map[int][]float64 // PID -> CPU history
 
 	// Historical data (circular buffers, 120 samples)
 	History      *HistoricalData
@@ -65,6 +66,7 @@ type ProcessInfo struct {
 	MemoryMB   float64
 	DiskMB     float64
 	NetworkMB  float64
+	CPUHistory []float64 // Last 10 samples for sparkline
 }
 
 // HistoricalData stores time series data
@@ -89,6 +91,7 @@ type HistoricalData struct {
 func NewMetricsState() *MetricsState {
 	return &MetricsState{
 		Temperature: make(map[string]float64),
+		ProcessHistory: make(map[int][]float64),
 		History: &HistoricalData{
 			IPIHistory:        make([]int, 0, 120),
 			TimerHistory:      make([]int, 0, 120),
