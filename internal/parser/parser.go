@@ -50,7 +50,9 @@ var (
 	swapUsedRegex    = regexp.MustCompile(`(?:Swap Used|VM Swap Used):\s+([0-9.]+)\s*(?:MB|GB)`)
 
 	// Process patterns
-	processRegex = regexp.MustCompile(`(\d+)\s+(\S+)\s+([0-9.]+)%?\s+([0-9.]+)\s*(?:MB|KB)?\s+([0-9.]+)\s*(?:MB|KB)?\s+([0-9.]+)\s*(?:MB|KB)?`)
+	// Updated regex for "Running tasks" format
+	// Format: Name ID CPU_ms/s User% ...
+	processRegex = regexp.MustCompile(`^([^\d]+?)\s+(\d+)\s+([0-9.]+)\s+([0-9.]+)\s+`)
 )
 
 // ParsePowerMetricsOutput parses the output from powermetrics command
@@ -73,13 +75,19 @@ func ParsePowerMetricsOutput(output string, state *models.MetricsState) {
 	for _, line := range lines {
 		line = strings.TrimSpace(line)
 
-		// Check for process section
-		if strings.Contains(line, "PID") && strings.Contains(line, "CPU") {
+		// Check for process section - new format "*** Running tasks ***"
+		if strings.Contains(line, "*** Running tasks ***") {
 			inProcessSection = true
 			continue
 		}
 
-		if inProcessSection && line == "" {
+		// Skip the header line
+		if inProcessSection && strings.Contains(line, "Name") && strings.Contains(line, "ID") {
+			continue
+		}
+
+		// Exit process section when we hit another *** section or empty line after processes
+		if inProcessSection && (strings.HasPrefix(line, "***") || line == "") {
 			inProcessSection = false
 		}
 
@@ -261,22 +269,31 @@ func ParsePowerMetricsOutput(output string, state *models.MetricsState) {
 			}
 		}
 
-		// Parse processes
+		// Parse processes from "Running tasks" section
+		// Format: Name(padded) ID CPU_ms/s User% ...
 		if inProcessSection {
 			if matches := processRegex.FindStringSubmatch(line); matches != nil {
-				pid, _ := strconv.Atoi(matches[1])
-				cpu, _ := strconv.ParseFloat(matches[3], 64)
-				mem, _ := strconv.ParseFloat(matches[4], 64)
-				disk, _ := strconv.ParseFloat(matches[5], 64)
-				net, _ := strconv.ParseFloat(matches[6], 64)
+				// matches[1] = Name (with spaces)
+				// matches[2] = ID (PID)
+				// matches[3] = CPU ms/s
+				// matches[4] = User%
+
+				name := strings.TrimSpace(matches[1])
+				pid, _ := strconv.Atoi(matches[2])
+				cpuMs, _ := strconv.ParseFloat(matches[3], 64)
+				userPercent, _ := strconv.ParseFloat(matches[4], 64)
+
+				// Convert CPU ms/s to percentage (approximate)
+				// 1000 ms/s = 100% of one core
+				cpuPercent := cpuMs / 10.0
 
 				state.Processes = append(state.Processes, models.ProcessInfo{
 					PID:        pid,
-					Name:       matches[2],
-					CPUPercent: cpu,
-					MemoryMB:   mem,
-					DiskMB:     disk,
-					NetworkMB:  net,
+					Name:       name,
+					CPUPercent: cpuPercent,
+					MemoryMB:   userPercent, // Using User% as a proxy for now
+					DiskMB:     0,
+					NetworkMB:  0,
 				})
 			}
 		}
