@@ -247,7 +247,7 @@ func DrawProcessesViewWithStartY(screen tcell.Screen, state *models.MetricsState
 	y += 2
 
 	// Header - properly aligned with exact spacing, with sparkline columns
-	header := fmt.Sprintf("%-8s %-28s %7s %11s %11s %11s %10s %10s",
+	header := fmt.Sprintf("%-8s %-28s %7s %11s %11s %11s  %-10s %-10s",
 		"PID", "Process", "CPU%", "Memory", "Disk", "Network", "CPU Hist", "Mem Hist")
 	DrawText(screen, 2, y, header, tcell.StyleDefault.Bold(true))
 	y++
@@ -288,12 +288,12 @@ func DrawProcessesViewWithStartY(screen tcell.Screen, state *models.MetricsState
 
 		DrawText(screen, 2, y, line, tcell.StyleDefault.Foreground(color))
 
-		// Draw sparkline for CPU history
+		// Draw sparkline for CPU history (starts at column 93 = 2 + 91)
 		if len(proc.CPUHistory) > 0 {
-			DrawCPUSparkline(screen, 96, y, 10, proc.CPUHistory, sparkColor)
+			DrawCPUSparkline(screen, 93, y, 10, proc.CPUHistory, sparkColor)
 		}
 
-		// Draw sparkline for Memory history
+		// Draw sparkline for Memory history (starts at column 104 = 93 + 11)
 		if len(proc.MemoryHistory) > 0 {
 			// Memory sparkline in MB, scale appropriately
 			memColor := tcell.ColorBlue
@@ -302,7 +302,7 @@ func DrawProcessesViewWithStartY(screen tcell.Screen, state *models.MetricsState
 			} else if proc.MemoryMB > 200 {
 				memColor = tcell.ColorYellow
 			}
-			DrawSparkline(screen, 107, y, 10, proc.MemoryHistory, memColor)
+			DrawSparkline(screen, 104, y, 10, proc.MemoryHistory, memColor)
 		}
 
 		y++
