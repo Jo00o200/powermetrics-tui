@@ -188,31 +188,31 @@ func drawUI(screen tcell.Screen) {
 	screen.Clear()
 	width, height := screen.Size()
 
-	// Draw the menu bar at the top
-	_ = ui.DrawCompactMenuBar(screen, width, currentView)
+	// Draw the menu bar at the top and get the next Y position
+	startY := ui.DrawCompactMenuBar(screen, width, currentView)
 
-	// Draw view based on current selection
+	// Draw view based on current selection, starting from the correct Y position
 	switch currentView {
 	case ui.ViewInterrupts:
-		ui.DrawInterruptsViewWithHelp(screen, metricsState, width, height, showHelp)
+		ui.DrawInterruptsViewWithHelp(screen, metricsState, width, height, showHelp, startY)
 	case ui.ViewPower:
-		ui.DrawPowerViewWithHelp(screen, metricsState, width, height, showHelp)
+		ui.DrawPowerViewWithHelp(screen, metricsState, width, height, showHelp, startY)
 	case ui.ViewFrequency:
-		ui.DrawFrequencyView(screen, metricsState, width, height)
+		ui.DrawFrequencyViewWithStartY(screen, metricsState, width, height, startY)
 	case ui.ViewProcesses:
-		ui.DrawProcessesView(screen, metricsState, width, height)
+		ui.DrawProcessesViewWithStartY(screen, metricsState, width, height, startY)
 	case ui.ViewNetwork:
-		ui.DrawNetworkView(screen, metricsState, width, height)
+		ui.DrawNetworkViewWithStartY(screen, metricsState, width, height, startY)
 	case ui.ViewDisk:
-		ui.DrawDiskView(screen, metricsState, width, height)
+		ui.DrawDiskViewWithStartY(screen, metricsState, width, height, startY)
 	case ui.ViewThermal:
-		ui.DrawThermalView(screen, metricsState, width, height)
+		ui.DrawThermalViewWithStartY(screen, metricsState, width, height, startY)
 	case ui.ViewBattery:
-		ui.DrawBatteryView(screen, metricsState, width, height)
+		ui.DrawBatteryViewWithStartY(screen, metricsState, width, height, startY)
 	case ui.ViewSystem:
-		ui.DrawSystemView(screen, metricsState, width, height)
+		ui.DrawSystemViewWithStartY(screen, metricsState, width, height, startY)
 	case ui.ViewCombined:
-		ui.DrawCombinedView(screen, metricsState, width, height)
+		ui.DrawCombinedViewWithStartY(screen, metricsState, width, height, startY)
 	}
 
 	// Draw footer

@@ -26,12 +26,12 @@ const (
 	ViewCount
 )
 
-// DrawInterruptsViewWithHelp draws the CPU interrupts view with optional help
-func DrawInterruptsViewWithHelp(screen tcell.Screen, state *models.MetricsState, width, height int, showHelp bool) {
+// DrawInterruptsViewWithHelp draws the CPU interrupts view with optional help and custom start Y
+func DrawInterruptsViewWithHelp(screen tcell.Screen, state *models.MetricsState, width, height int, showHelp bool, startY int) {
 	state.Mu.RLock()
 	defer state.Mu.RUnlock()
 
-	y := 1
+	y := startY
 	DrawText(screen, 2, y, "CPU INTERRUPTS", tcell.StyleDefault.Bold(true).Foreground(tcell.ColorTeal))
 	if showHelp {
 		DrawText(screen, 20, y, "(System events requiring CPU attention)", tcell.StyleDefault.Foreground(tcell.ColorGray))
@@ -95,17 +95,13 @@ func DrawInterruptsViewWithHelp(screen tcell.Screen, state *models.MetricsState,
 	}
 }
 
-// DrawInterruptsView is the legacy function that always shows help
-func DrawInterruptsView(screen tcell.Screen, state *models.MetricsState, width, height int) {
-	DrawInterruptsViewWithHelp(screen, state, width, height, true)
-}
 
-// DrawPowerViewWithHelp draws the power consumption view with optional help
-func DrawPowerViewWithHelp(screen tcell.Screen, state *models.MetricsState, width, height int, showHelp bool) {
+// DrawPowerViewWithHelp draws the power consumption view with optional help and custom start Y
+func DrawPowerViewWithHelp(screen tcell.Screen, state *models.MetricsState, width, height int, showHelp bool, startY int) {
 	state.Mu.RLock()
 	defer state.Mu.RUnlock()
 
-	y := 1
+	y := startY
 	DrawText(screen, 2, y, "POWER CONSUMPTION", tcell.StyleDefault.Bold(true).Foreground(tcell.ColorYellow))
 	if showHelp {
 		DrawText(screen, 20, y, "(Energy usage - affects battery life)", tcell.StyleDefault.Foreground(tcell.ColorGray))
@@ -174,17 +170,13 @@ func DrawPowerViewWithHelp(screen tcell.Screen, state *models.MetricsState, widt
 	}
 }
 
-// DrawPowerView is the legacy function that always shows help
-func DrawPowerView(screen tcell.Screen, state *models.MetricsState, width, height int) {
-	DrawPowerViewWithHelp(screen, state, width, height, true)
-}
 
-// DrawFrequencyView draws the CPU/GPU frequency view
-func DrawFrequencyView(screen tcell.Screen, state *models.MetricsState, width, height int) {
+// DrawFrequencyViewWithStartY draws the CPU/GPU frequency view with custom start Y
+func DrawFrequencyViewWithStartY(screen tcell.Screen, state *models.MetricsState, width, height int, startY int) {
 	state.Mu.RLock()
 	defer state.Mu.RUnlock()
 
-	y := 1
+	y := startY
 	DrawText(screen, 2, y, "FREQUENCY MONITORING", tcell.StyleDefault.Bold(true).Foreground(tcell.ColorPurple))
 	y += 2
 
@@ -245,12 +237,12 @@ func DrawFrequencyView(screen tcell.Screen, state *models.MetricsState, width, h
 	}
 }
 
-// DrawProcessesView draws the top processes view
-func DrawProcessesView(screen tcell.Screen, state *models.MetricsState, width, height int) {
+// DrawProcessesViewWithStartY draws the top processes view with custom start Y
+func DrawProcessesViewWithStartY(screen tcell.Screen, state *models.MetricsState, width, height int, startY int) {
 	state.Mu.RLock()
 	defer state.Mu.RUnlock()
 
-	y := 1
+	y := startY
 	DrawText(screen, 2, y, "TOP PROCESSES", tcell.StyleDefault.Bold(true).Foreground(tcell.ColorTeal))
 	y += 2
 
@@ -286,12 +278,12 @@ func DrawProcessesView(screen tcell.Screen, state *models.MetricsState, width, h
 	}
 }
 
-// DrawNetworkView draws the network I/O view
-func DrawNetworkView(screen tcell.Screen, state *models.MetricsState, width, height int) {
+// DrawNetworkViewWithStartY draws the network I/O view with custom start Y
+func DrawNetworkViewWithStartY(screen tcell.Screen, state *models.MetricsState, width, height int, startY int) {
 	state.Mu.RLock()
 	defer state.Mu.RUnlock()
 
-	y := 1
+	y := startY
 	DrawText(screen, 2, y, "NETWORK I/O", tcell.StyleDefault.Bold(true).Foreground(tcell.ColorGreen))
 	y += 2
 
@@ -320,12 +312,12 @@ func DrawNetworkView(screen tcell.Screen, state *models.MetricsState, width, hei
 	DrawText(screen, 2, y, fmt.Sprintf("Total: %7.2f MB/s", total), tcell.StyleDefault.Bold(true))
 }
 
-// DrawDiskView draws the disk I/O view
-func DrawDiskView(screen tcell.Screen, state *models.MetricsState, width, height int) {
+// DrawDiskViewWithStartY draws the disk I/O view with custom start Y
+func DrawDiskViewWithStartY(screen tcell.Screen, state *models.MetricsState, width, height int, startY int) {
 	state.Mu.RLock()
 	defer state.Mu.RUnlock()
 
-	y := 1
+	y := startY
 	DrawText(screen, 2, y, "DISK I/O", tcell.StyleDefault.Bold(true).Foreground(tcell.ColorPurple))
 	y += 2
 
@@ -354,12 +346,12 @@ func DrawDiskView(screen tcell.Screen, state *models.MetricsState, width, height
 	DrawText(screen, 2, y, fmt.Sprintf("Total: %7.2f MB/s", total), tcell.StyleDefault.Bold(true))
 }
 
-// DrawThermalView draws the thermal monitoring view
-func DrawThermalView(screen tcell.Screen, state *models.MetricsState, width, height int) {
+// DrawThermalViewWithStartY draws the thermal monitoring view with custom start Y
+func DrawThermalViewWithStartY(screen tcell.Screen, state *models.MetricsState, width, height int, startY int) {
 	state.Mu.RLock()
 	defer state.Mu.RUnlock()
 
-	y := 1
+	y := startY
 	DrawText(screen, 2, y, "THERMAL STATUS", tcell.StyleDefault.Bold(true).Foreground(tcell.ColorRed))
 	y += 2
 
@@ -413,12 +405,12 @@ func DrawThermalView(screen tcell.Screen, state *models.MetricsState, width, hei
 	}
 }
 
-// DrawBatteryView draws the battery status view
-func DrawBatteryView(screen tcell.Screen, state *models.MetricsState, width, height int) {
+// DrawBatteryViewWithStartY draws the battery status view with custom start Y
+func DrawBatteryViewWithStartY(screen tcell.Screen, state *models.MetricsState, width, height int, startY int) {
 	state.Mu.RLock()
 	defer state.Mu.RUnlock()
 
-	y := 1
+	y := startY
 	DrawText(screen, 2, y, "BATTERY STATUS", tcell.StyleDefault.Bold(true).Foreground(tcell.ColorGreen))
 	y += 2
 
@@ -469,12 +461,12 @@ func DrawBatteryView(screen tcell.Screen, state *models.MetricsState, width, hei
 	}
 }
 
-// DrawSystemView draws the system overview
-func DrawSystemView(screen tcell.Screen, state *models.MetricsState, width, height int) {
+// DrawSystemViewWithStartY draws the system overview with custom start Y
+func DrawSystemViewWithStartY(screen tcell.Screen, state *models.MetricsState, width, height int, startY int) {
 	state.Mu.RLock()
 	defer state.Mu.RUnlock()
 
-	y := 1
+	y := startY
 	DrawText(screen, 2, y, "SYSTEM OVERVIEW", tcell.StyleDefault.Bold(true).Foreground(tcell.ColorTeal))
 	y += 2
 
@@ -532,11 +524,11 @@ func DrawSystemView(screen tcell.Screen, state *models.MetricsState, width, heig
 }
 
 // DrawCombinedView draws a combined view of all metrics
-func DrawCombinedView(screen tcell.Screen, state *models.MetricsState, width, height int) {
+func DrawCombinedViewWithStartY(screen tcell.Screen, state *models.MetricsState, width, height int, startY int) {
 	state.Mu.RLock()
 	defer state.Mu.RUnlock()
 
-	y := 1
+	y := startY
 	DrawText(screen, 2, y, "SYSTEM METRICS", tcell.StyleDefault.Bold(true).Foreground(tcell.ColorTeal))
 	y += 2
 
