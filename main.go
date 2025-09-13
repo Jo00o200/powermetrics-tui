@@ -71,7 +71,17 @@ func main() {
 					return
 				}
 				if ev.Key() == tcell.KeyTab {
-					currentView = (currentView + 1) % ui.ViewCount
+					// Check for Shift+Tab (backward navigation)
+					if ev.Modifiers()&tcell.ModShift != 0 {
+						if currentView == 0 {
+							currentView = ui.ViewCount - 1
+						} else {
+							currentView--
+						}
+					} else {
+						// Regular Tab (forward navigation)
+						currentView = (currentView + 1) % ui.ViewCount
+					}
 				}
 				if ev.Key() == tcell.KeyCtrlC {
 					return
@@ -224,7 +234,7 @@ func drawUI(screen tcell.Screen) {
 }
 
 func drawFooter(screen tcell.Screen, width, height int) {
-	footer := " 1-9,0: Jump to View | Tab: Next | H: Help | Q: Quit "
+	footer := " 1-9,0: Jump | Tab/Shift+Tab: Next/Prev | H: Help | Q: Quit "
 
 	// Show current view name
 	viewNames := []string{
