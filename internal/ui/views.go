@@ -288,12 +288,12 @@ func DrawProcessesViewWithStartY(screen tcell.Screen, state *models.MetricsState
 
 		DrawText(screen, 2, y, line, tcell.StyleDefault.Foreground(color))
 
-		// Draw sparkline for CPU history (starts at column 90)
+		// Draw sparkline for CPU history (starts at column 88)
 		if len(proc.CPUHistory) > 0 {
-			DrawCPUSparkline(screen, 90, y, 10, proc.CPUHistory, sparkColor)
+			DrawCPUSparkline(screen, 88, y, 10, proc.CPUHistory, sparkColor)
 		}
 
-		// Draw sparkline for Memory history (starts at column 101)
+		// Draw sparkline for Memory history (starts at column 99)
 		if len(proc.MemoryHistory) > 0 {
 			// Memory sparkline in MB, scale appropriately
 			memColor := tcell.ColorBlue
@@ -302,7 +302,7 @@ func DrawProcessesViewWithStartY(screen tcell.Screen, state *models.MetricsState
 			} else if proc.MemoryMB > 200 {
 				memColor = tcell.ColorYellow
 			}
-			DrawSparkline(screen, 101, y, 10, proc.MemoryHistory, memColor)
+			DrawSparkline(screen, 99, y, 10, proc.MemoryHistory, memColor)
 		}
 
 		y++
