@@ -17,7 +17,7 @@ import (
 )
 
 var (
-	samplers     = flag.String("samplers", "all", "Comma-separated list of samplers (interrupts,cpu_power,gpu_power,thermal,battery,all,default)")
+	samplers     = flag.String("samplers", "default", "Comma-separated list of samplers (interrupts,cpu_power,gpu_power,thermal,battery,tasks,all,default)")
 	interval     = flag.Int("interval", 1000, "Sampling interval in milliseconds")
 	combined     = flag.Bool("combined", false, "Show all metrics in combined view")
 	debug        = flag.Bool("debug", false, "Enable debug output")
@@ -108,8 +108,10 @@ func determineSamplers() string {
 		"gpu_power":  "gpu_power",
 		"thermal":    "thermal,smc",
 		"battery":    "battery",
+		"tasks":      "tasks",
+		"processes":  "tasks",
 		"all":        "all",
-		"default":    "",
+		"default":    "default",
 	}
 
 	samplerParts := strings.Split(*samplers, ",")
@@ -127,11 +129,11 @@ func determineSamplers() string {
 	}
 
 	if len(result) == 0 {
-		return "all"
+		return "default"
 	}
 
 	// Determine initial view based on samplers
-	if result[0] == "all" || *combined {
+	if result[0] == "all" || result[0] == "default" || *combined {
 		currentView = ui.ViewInterrupts  // Start with interrupts view when all samplers are enabled
 	} else if strings.Contains(result[0], "interrupts") {
 		currentView = ui.ViewInterrupts
