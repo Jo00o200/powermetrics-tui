@@ -259,9 +259,14 @@ func DrawProcessesViewWithStartY(screen tcell.Screen, state *models.MetricsState
 		return processes[i].CPUPercent > processes[j].CPUPercent
 	})
 
-	// Display top 10 processes
+	// Display as many processes as can fit on screen
+	maxProcesses := height - y - 2 // Leave 2 lines for bottom border
+	if maxProcesses > 30 {
+		maxProcesses = 30 // Cap at 30 to keep it readable
+	}
+
 	for i, proc := range processes {
-		if i >= 10 || y >= height-2 {
+		if i >= maxProcesses || y >= height-2 {
 			break
 		}
 
