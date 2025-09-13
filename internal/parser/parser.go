@@ -71,7 +71,9 @@ func ParsePowerMetricsOutput(output string, state *models.MetricsState) {
 	interrupts := 0.0
 	state.ECoreFreq = []int{}
 	state.PCoreFreq = []int{}
-	state.Processes = []models.ProcessInfo{}
+
+	// Create a new processes list, but preserve history
+	newProcesses := []models.ProcessInfo{}
 
 	inProcessSection := false
 
@@ -301,7 +303,7 @@ func ParsePowerMetricsOutput(output string, state *models.MetricsState) {
 				}
 				state.ProcessMemHistory[pid] = models.AddToHistory(state.ProcessMemHistory[pid], userPercent, 10)
 
-				state.Processes = append(state.Processes, models.ProcessInfo{
+				newProcesses = append(newProcesses, models.ProcessInfo{
 					PID:           pid,
 					Name:          name,
 					CPUPercent:    cpuPercent,
@@ -311,6 +313,30 @@ func ParsePowerMetricsOutput(output string, state *models.MetricsState) {
 					CPUHistory:    state.ProcessCPUHistory[pid],
 					MemoryHistory: state.ProcessMemHistory[pid],
 				})
+			}
+		}
+	}
+
+	// Update the processes list with the new data
+	state.Processes = newProcesses
+
+	// Clean up history for processes that no longer exist
+	// Keep history for a bit in case process comes back
+	currentPIDs := make(map[int]bool)
+	for _, proc := range newProcesses {
+		currentPIDs[proc.PID] = true
+	}
+
+	// Only clean up if we have too many old processes (memory management)
+	if len(state.ProcessCPUHistory) > len(currentPIDs)*2 {
+		for pid := range state.ProcessCPUHistory {
+			if !currentPIDs[pid] {
+				// Check if this PID hasn't been seen for several updates
+				// For now, just remove if not in current list and we have too many
+				if len(state.ProcessCPUHistory) > 200 {
+					delete(state.ProcessCPUHistory, pid)
+					delete(state.ProcessMemHistory, pid)
+				}
 			}
 		}
 	}
