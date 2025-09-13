@@ -290,8 +290,7 @@ func DrawProcessesViewWithStartY(screen tcell.Screen, state *models.MetricsState
 
 		// Draw sparkline for CPU history
 		if len(proc.CPUHistory) > 0 {
-			sparkline := RenderSparkline(proc.CPUHistory, 10)
-			DrawText(screen, 98, y, sparkline, tcell.StyleDefault.Foreground(sparkColor))
+			DrawCPUSparkline(screen, 98, y, 10, proc.CPUHistory, sparkColor)
 		}
 
 		y++

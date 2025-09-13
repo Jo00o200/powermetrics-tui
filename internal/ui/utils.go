@@ -82,6 +82,42 @@ func DrawSparkline(screen tcell.Screen, x, y, width int, data []float64, color t
 	}
 }
 
+// DrawCPUSparkline draws a sparkline chart for CPU percentages (0-100% scale)
+func DrawCPUSparkline(screen tcell.Screen, x, y, width int, data []float64, color tcell.Color) {
+	if len(data) == 0 {
+		return
+	}
+
+	// Unicode block characters for sparkline
+	ticks := []rune{' ', '▁', '▂', '▃', '▄', '▅', '▆', '▇', '█'}
+
+	// Convert CPU percentages (0-100) to tick levels
+	levels := make([]int, 0, len(data))
+	for _, v := range data {
+		// Use absolute 0-100% scale
+		level := int(v / 100.0 * 8)
+		if level < 0 {
+			level = 0
+		}
+		if level > 8 {
+			level = 8
+		}
+		levels = append(levels, level)
+	}
+
+	// Draw sparkline - show the most recent 'width' samples from the end
+	start := 0
+	if len(levels) > width {
+		start = len(levels) - width
+	}
+
+	pos := 0
+	for i := start; i < len(levels) && pos < width; i++ {
+		screen.SetContent(x+pos, y, ticks[levels[i]], nil, tcell.StyleDefault.Foreground(color))
+		pos++
+	}
+}
+
 // FormatSize formats bytes into human-readable format
 func FormatSize(bytes float64) string {
 	units := []string{"B", "KB", "MB", "GB", "TB"}
