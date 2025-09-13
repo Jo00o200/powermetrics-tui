@@ -1,0 +1,40 @@
+# Binaries
+powermetrics-tui
+*.exe
+*.dll
+*.so
+*.dylib
+
+# Test binary, built with `go test -c`
+*.test
+
+# Output of the go coverage tool
+*.out
+
+# Go workspace file
+go.work
+
+# Dependency directories
+vendor/
+
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# Debug files
+/tmp/
+*.log
+powermetrics_debug.txt
+debug.txt
+
+# Build artifacts
+dist/
+build/
