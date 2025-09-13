@@ -417,52 +417,65 @@ func DrawProcessesViewWithStartY(screen tcell.Screen, state *models.MetricsState
 	if len(state.RecentlyExited) > 0 && y < height-3 {
 		y += 2
 		exitedTitle := fmt.Sprintf("RECENTLY EXITED PROCESSES (showing %d of %d)",
-			min(5, len(state.RecentlyExited)), len(state.RecentlyExited))
+			min(10, len(state.RecentlyExited)), len(state.RecentlyExited))
 		DrawText(screen, 2, y, exitedTitle, tcell.StyleDefault.Bold(true).Foreground(tcell.ColorGray))
 		y++
 
 		// Header for exited processes
-		exitHeader := fmt.Sprintf("%-8s %-28s %7s %8s %10s %10s  %-10s",
-			"PID", "Process", "LastCPU", "MaxCPU", "AvgCPU", "MaxMem", "Duration")
+		exitHeader := fmt.Sprintf("%-40s %12s %15s",
+			"Process", "Occurrences", "Last Seen")
 		DrawText(screen, 2, y, exitHeader, tcell.StyleDefault.Bold(true).Foreground(tcell.ColorGray))
 		y++
 
-		// Display up to 5 most recent exited processes
+		// Display up to 10 most recent exited processes
 		displayCount := len(state.RecentlyExited)
-		if displayCount > 5 {
-			displayCount = 5
+		if displayCount > 10 {
+			displayCount = 10
 		}
-		// Show most recent first
-		startIdx := len(state.RecentlyExited) - displayCount
-		for i := len(state.RecentlyExited) - 1; i >= startIdx && y < height-1; i-- {
-			proc := state.RecentlyExited[i]
+
+		// Sort by last exit time (most recent first)
+		sortedExited := make([]models.ExitedProcessInfo, len(state.RecentlyExited))
+		copy(sortedExited, state.RecentlyExited)
+		sort.Slice(sortedExited, func(i, j int) bool {
+			return sortedExited[i].LastExitTime.After(sortedExited[j].LastExitTime)
+		})
+
+		for i := 0; i < displayCount && y < height-1; i++ {
+			proc := sortedExited[i]
 
 			// Truncate long process names
 			processName := proc.Name
-			if len(processName) > 27 {
-				processName = processName[:24] + "..."
+			if len(processName) > 39 {
+				processName = processName[:36] + "..."
 			}
 
-			// Format duration
-			duration := time.Since(proc.ExitTime)
-			durationStr := fmt.Sprintf("%dm ago", int(duration.Minutes()))
+			// Format last seen time
+			duration := time.Since(proc.LastExitTime)
+			lastSeenStr := ""
+			if duration.Seconds() < 60 {
+				lastSeenStr = fmt.Sprintf("%ds ago", int(duration.Seconds()))
+			} else if duration.Minutes() < 60 {
+				lastSeenStr = fmt.Sprintf("%dm ago", int(duration.Minutes()))
+			} else {
+				lastSeenStr = fmt.Sprintf("%dh ago", int(duration.Hours()))
+			}
+
+			// Format occurrences with 'x' suffix
+			occurrencesStr := fmt.Sprintf("%dx", proc.Occurrences)
+			if proc.Occurrences == 1 {
+				occurrencesStr = "1x"
+			}
+
+			line := fmt.Sprintf("%-40s %12s %15s",
+				processName, occurrencesStr, lastSeenStr)
+
+			// Use different shades of gray based on how recent
+			color := tcell.ColorGray
 			if duration.Minutes() < 1 {
-				durationStr = fmt.Sprintf("%ds ago", int(duration.Seconds()))
-			} else if duration.Hours() >= 1 {
-				durationStr = fmt.Sprintf("%dh ago", int(duration.Hours()))
+				color = tcell.ColorSilver
 			}
 
-			line := fmt.Sprintf("%-8d %-28s %6.1f%% %7.1f%% %9.1f%% %8.1fMB  %-10s",
-				proc.PID, processName, proc.LastCPU, proc.MaxCPU, proc.AvgCPU, proc.MaxMemory, durationStr)
-
-			// Use gray color for exited processes
-			DrawText(screen, 2, y, line, tcell.StyleDefault.Foreground(tcell.ColorGray))
-
-			// Draw final CPU history sparkline if available
-			if len(proc.CPUHistory) > 0 {
-				DrawCPUSparkline(screen, 88, y, 10, proc.CPUHistory, tcell.ColorGray)
-			}
-
+			DrawText(screen, 2, y, line, tcell.StyleDefault.Foreground(color))
 			y++
 		}
 	}

@@ -360,68 +360,49 @@ func ParsePowerMetricsOutput(output string, state *models.MetricsState) {
 	for pid, lastSeen := range state.LastSeenPIDs {
 		if !currentPIDs[pid] {
 			// Process has exited if we haven't seen it this update
-			// But only add to exited list if we have its history
-			if cpuHistory, hasCPU := state.ProcessCPUHistory[pid]; hasCPU && len(cpuHistory) > 0 {
-				// Get the process name from our stored names
-				processName := state.ProcessNames[pid]
-				if processName == "" {
-					processName = fmt.Sprintf("PID-%d", pid)
-				}
-
-				// Calculate statistics from history
-				var maxCPU, avgCPU, totalCPU float64
-				for _, cpu := range cpuHistory {
-					if cpu > maxCPU {
-						maxCPU = cpu
-					}
-					totalCPU += cpu
-				}
-				if len(cpuHistory) > 0 {
-					avgCPU = totalCPU / float64(len(cpuHistory))
-				}
-
-				var maxMem, lastMem float64
-				if memHistory, hasMem := state.ProcessMemHistory[pid]; hasMem && len(memHistory) > 0 {
-					lastMem = memHistory[len(memHistory)-1]
-					for _, mem := range memHistory {
-						if mem > maxMem {
-							maxMem = mem
-						}
+			// Get the process name from our stored names
+			processName := state.ProcessNames[pid]
+			if processName != "" && processName != fmt.Sprintf("PID-%d", pid) {
+				// Check if we already have this process in the exited list
+				found := false
+				for i := range state.RecentlyExited {
+					if state.RecentlyExited[i].Name == processName {
+						// Update existing entry
+						state.RecentlyExited[i].Occurrences++
+						state.RecentlyExited[i].LastExitTime = currentTime
+						found = true
+						break
 					}
 				}
 
-				// Add to recently exited list
-				exitedProc := models.ExitedProcessInfo{
-					PID:           pid,
-					Name:          processName,
-					LastCPU:       cpuHistory[len(cpuHistory)-1],
-					MaxCPU:        maxCPU,
-					AvgCPU:        avgCPU,
-					LastMemory:    lastMem,
-					MaxMemory:     maxMem,
-					Duration:      currentTime.Sub(lastSeen),
-					ExitTime:      currentTime,
-					CPUHistory:    append([]float64{}, cpuHistory...), // Copy history
-					MemoryHistory: append([]float64{}, state.ProcessMemHistory[pid]...),
-				}
-
-				state.RecentlyExited = append(state.RecentlyExited, exitedProc)
-
-				// Keep only the last 20 recently exited processes
-				if len(state.RecentlyExited) > 20 {
-					state.RecentlyExited = state.RecentlyExited[1:]
+				if !found {
+					// Add new entry
+					exitedProc := models.ExitedProcessInfo{
+						Name:          processName,
+						Occurrences:   1,
+						LastExitTime:  currentTime,
+						FirstSeenTime: lastSeen,
+					}
+					state.RecentlyExited = append(state.RecentlyExited, exitedProc)
 				}
 			}
 
-			// Clean up old entries from LastSeenPIDs
-			if currentTime.Sub(lastSeen) > 5*time.Minute {
-				delete(state.LastSeenPIDs, pid)
-				delete(state.ProcessCPUHistory, pid)
-				delete(state.ProcessMemHistory, pid)
-				delete(state.ProcessNames, pid)
-			}
+			// Clean up old entries from tracking maps
+			delete(state.LastSeenPIDs, pid)
+			delete(state.ProcessCPUHistory, pid)
+			delete(state.ProcessMemHistory, pid)
+			delete(state.ProcessNames, pid)
 		}
 	}
+
+	// Clean up old exited processes (older than 5 minutes)
+	var cleanedExited []models.ExitedProcessInfo
+	for _, proc := range state.RecentlyExited {
+		if currentTime.Sub(proc.LastExitTime) < 5*time.Minute {
+			cleanedExited = append(cleanedExited, proc)
+		}
+	}
+	state.RecentlyExited = cleanedExited
 
 	// Update the processes list with the new data
 	state.Processes = newProcesses

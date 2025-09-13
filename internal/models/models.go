@@ -90,17 +90,10 @@ type ProcessInfo struct {
 
 // ExitedProcessInfo represents a process that recently exited
 type ExitedProcessInfo struct {
-	PID           int
-	Name          string
-	LastCPU       float64   // Last observed CPU%
-	MaxCPU        float64   // Maximum CPU% observed
-	AvgCPU        float64   // Average CPU% over lifetime
-	LastMemory    float64   // Last observed memory (MB)
-	MaxMemory     float64   // Maximum memory observed
-	Duration      time.Duration // How long the process was active
-	ExitTime      time.Time // When the process exited
-	CPUHistory    []float64 // Final CPU history snapshot
-	MemoryHistory []float64 // Final memory history snapshot
+	Name         string
+	Occurrences  int       // Number of times this process has appeared and exited
+	LastExitTime time.Time // When the process last exited
+	FirstSeenTime time.Time // When we first saw this process name
 }
 
 // HistoricalData stores time series data
