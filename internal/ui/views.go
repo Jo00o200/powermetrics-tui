@@ -247,7 +247,7 @@ func DrawProcessesViewWithStartY(screen tcell.Screen, state *models.MetricsState
 	y += 2
 
 	// Header - properly aligned with exact spacing, with sparkline columns
-	header := fmt.Sprintf("%-8s %-28s %7s %12s %13s %14s  %-10s %-10s",
+	header := fmt.Sprintf("%-8s %-28s %7s %11s %11s %11s  %-10s %-10s",
 		"PID", "Process", "CPU%", "Memory", "Disk", "Network", "CPU Hist", "Mem Hist")
 	DrawText(screen, 2, y, header, tcell.StyleDefault.Bold(true))
 	y++
@@ -271,8 +271,8 @@ func DrawProcessesViewWithStartY(screen tcell.Screen, state *models.MetricsState
 			processName = processName[:24] + "..."
 		}
 
-		// Format the line with exact same alignment as header (with progressive padding)
-		line := fmt.Sprintf("%-8d %-28s %6.1f%% %11.1fMB %12.1fMB %13.1fMB",
+		// Format the line with exact same alignment as header
+		line := fmt.Sprintf("%-8d %-28s %6.1f%% %10.1fMB %10.1fMB %10.1fMB",
 			proc.PID, processName, proc.CPUPercent, proc.MemoryMB, proc.DiskMB, proc.NetworkMB)
 
 		// Color based on CPU usage
@@ -288,12 +288,12 @@ func DrawProcessesViewWithStartY(screen tcell.Screen, state *models.MetricsState
 
 		DrawText(screen, 2, y, line, tcell.StyleDefault.Foreground(color))
 
-		// Draw sparkline for CPU history (starts at column 95)
+		// Draw sparkline for CPU history (starts at column 93)
 		if len(proc.CPUHistory) > 0 {
-			DrawCPUSparkline(screen, 95, y, 10, proc.CPUHistory, sparkColor)
+			DrawCPUSparkline(screen, 93, y, 10, proc.CPUHistory, sparkColor)
 		}
 
-		// Draw sparkline for Memory history (starts at column 106 = 95 + 11)
+		// Draw sparkline for Memory history (starts at column 104)
 		if len(proc.MemoryHistory) > 0 {
 			// Memory sparkline in MB, scale appropriately
 			memColor := tcell.ColorBlue
@@ -302,7 +302,7 @@ func DrawProcessesViewWithStartY(screen tcell.Screen, state *models.MetricsState
 			} else if proc.MemoryMB > 200 {
 				memColor = tcell.ColorYellow
 			}
-			DrawSparkline(screen, 106, y, 10, proc.MemoryHistory, memColor)
+			DrawSparkline(screen, 104, y, 10, proc.MemoryHistory, memColor)
 		}
 
 		y++
