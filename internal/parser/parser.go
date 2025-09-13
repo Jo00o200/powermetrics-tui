@@ -51,8 +51,9 @@ var (
 
 	// Process patterns
 	// Updated regex for "Running tasks" format
-	// Format: Name ID CPU_ms/s User% ...
-	processRegex = regexp.MustCompile(`^([^\d]+?)\s+(\d+)\s+([0-9.]+)\s+([0-9.]+)\s+`)
+	// Format: Name (padded to ~35 chars) ID CPU_ms/s User% ...
+	// Using a simpler approach: capture everything before the first number as name
+	processRegex = regexp.MustCompile(`^(.+?)\s+(\d+)\s+([0-9.]+)\s+([0-9.]+)`)
 )
 
 // ParsePowerMetricsOutput parses the output from powermetrics command
@@ -86,8 +87,8 @@ func ParsePowerMetricsOutput(output string, state *models.MetricsState) {
 			continue
 		}
 
-		// Exit process section when we hit another *** section or empty line after processes
-		if inProcessSection && (strings.HasPrefix(line, "***") || line == "") {
+		// Exit process section when we hit another *** section
+		if inProcessSection && strings.HasPrefix(line, "***") {
 			inProcessSection = false
 		}
 
