@@ -19,8 +19,6 @@ import (
 var (
 	samplers     = flag.String("samplers", "all", "Comma-separated list of samplers (interrupts,cpu_power,gpu_power,thermal,battery,tasks,all,default)")
 	interval     = flag.Int("interval", 1000, "Sampling interval in milliseconds")
-	combined     = flag.Bool("combined", false, "Show all metrics in combined view")
-	debug        = flag.Bool("debug", false, "Enable debug output")
 	currentView  ui.ViewType
 	metricsState *models.MetricsState
 	showHelp     bool = true // Show descriptions by default for casual users
@@ -117,9 +115,6 @@ func main() {
 }
 
 func determineSamplers() string {
-	if *combined {
-		return "all"
-	}
 
 	// Map view names to powermetrics samplers
 	samplerMap := map[string]string{
@@ -153,7 +148,7 @@ func determineSamplers() string {
 	}
 
 	// Determine initial view based on samplers
-	if result[0] == "all" || result[0] == "default" || *combined {
+	if result[0] == "all" || result[0] == "default" {
 		currentView = ui.ViewInterrupts  // Start with interrupts view when all samplers are enabled
 	} else if strings.Contains(result[0], "interrupts") {
 		currentView = ui.ViewInterrupts
@@ -177,24 +172,17 @@ func runPowerMetrics(samplerList string) {
 			"-n", "1",
 		}
 
+		// Always use --show-all to see all processes
+		args = append(args, "--show-all")
+
 		cmd := exec.Command("sudo", args...)
 		output, err := cmd.CombinedOutput()
 		if err != nil {
 			metricsState.Mu.Lock()
 			metricsState.UpdateErrors++
-			// Store error message for debugging
-			if *debug && len(output) > 0 {
-				fmt.Fprintf(os.Stderr, "powermetrics error: %s\n", string(output))
-			}
 			metricsState.Mu.Unlock()
 			time.Sleep(time.Duration(*interval) * time.Millisecond)
 			continue
-		}
-
-		if *debug {
-			fmt.Fprintf(os.Stderr, "powermetrics output (%d bytes)\n", len(output))
-			// Save to file for inspection
-			os.WriteFile("/tmp/powermetrics_debug.txt", output, 0644)
 		}
 
 		parser.ParsePowerMetricsOutput(string(output), metricsState)

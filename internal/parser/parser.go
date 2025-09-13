@@ -346,8 +346,8 @@ func ParsePowerMetricsOutput(output string, state *models.MetricsState) {
 		}
 	}
 
-	// Track recently exited processes - but be conservative
-	// Only track processes that we've seen consistently and then disappear
+	// Track recently exited processes
+	// With --show-all, we see ALL processes, so absence means true exit
 	currentTime := time.Now()
 	currentPIDs := make(map[int]bool)
 	for _, proc := range newProcesses {
@@ -357,37 +357,33 @@ func ParsePowerMetricsOutput(output string, state *models.MetricsState) {
 		state.ProcessNames[proc.PID] = proc.Name
 	}
 
-	// Only check for exited processes that we've been tracking for a while
-	// and have significant CPU history (indicating they were real active processes)
+	// Check for newly exited processes
 	for pid, lastSeen := range state.LastSeenPIDs {
 		if !currentPIDs[pid] {
-			// Only consider it "exited" if:
-			// 1. We haven't seen it for at least 30 seconds (not just dropped from top list)
-			// 2. OR it had significant CPU usage (>10%) suggesting it was a real workload
-			timeSinceLastSeen := currentTime.Sub(lastSeen)
+			// Process has truly exited (not in the full list)
+			processName := state.ProcessNames[pid]
 
-			cpuHistory := state.ProcessCPUHistory[pid]
-			hadSignificantCPU := false
-			if len(cpuHistory) > 0 {
-				// Check if process ever had significant CPU usage
-				for _, cpu := range cpuHistory {
-					if cpu > 10.0 {
-						hadSignificantCPU = true
-						break
+			// Only track non-system processes with meaningful names
+			if processName != "" && processName != fmt.Sprintf("PID-%d", pid) &&
+				!strings.Contains(processName, "kernel_task") &&
+				!strings.Contains(processName, "WindowServer") &&
+				!strings.Contains(processName, "loginwindow") &&
+				!strings.Contains(processName, "launchd") &&
+				!strings.Contains(processName, "distnoted") {
+
+				// Only track if it had some CPU activity (was a real workload)
+				cpuHistory := state.ProcessCPUHistory[pid]
+				hadActivity := false
+				if len(cpuHistory) > 0 {
+					for _, cpu := range cpuHistory {
+						if cpu > 1.0 { // At least 1% CPU at some point
+							hadActivity = true
+							break
+						}
 					}
 				}
-			}
 
-			// Only track as exited if it's been gone for a while OR was a significant process
-			if timeSinceLastSeen > 30*time.Second || (hadSignificantCPU && timeSinceLastSeen > 5*time.Second) {
-				processName := state.ProcessNames[pid]
-				// Only track processes with meaningful names (not system processes)
-				if processName != "" && processName != fmt.Sprintf("PID-%d", pid) &&
-					!strings.Contains(processName, "kernel_task") &&
-					!strings.Contains(processName, "WindowServer") &&
-					!strings.Contains(processName, "loginwindow") &&
-					!strings.Contains(processName, "launchd") {
-
+				if hadActivity {
 					// Check if we already have this process in the exited list
 					found := false
 					for i := range state.RecentlyExited {
@@ -411,13 +407,13 @@ func ParsePowerMetricsOutput(output string, state *models.MetricsState) {
 						state.RecentlyExited = append(state.RecentlyExited, exitedProc)
 					}
 				}
-
-				// Clean up old entries from tracking maps
-				delete(state.LastSeenPIDs, pid)
-				delete(state.ProcessCPUHistory, pid)
-				delete(state.ProcessMemHistory, pid)
-				delete(state.ProcessNames, pid)
 			}
+
+			// Clean up old entries from tracking maps
+			delete(state.LastSeenPIDs, pid)
+			delete(state.ProcessCPUHistory, pid)
+			delete(state.ProcessMemHistory, pid)
+			delete(state.ProcessNames, pid)
 		}
 	}
 
