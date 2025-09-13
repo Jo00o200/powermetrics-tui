@@ -40,7 +40,8 @@ func main() {
 	}
 	defer screen.Fini()
 
-	screen.EnableMouse()
+	// Don't enable mouse - it prevents text selection in the terminal
+	// screen.EnableMouse()
 	screen.Clear()
 
 	// Determine which samplers to use
@@ -240,15 +241,22 @@ func drawFooter(screen tcell.Screen, width, height int) {
 		"Disk", "Thermal", "Battery", "System", "Combined",
 	}
 
+	leftOffset := 2
 	if int(currentView) < len(viewNames) {
 		status := fmt.Sprintf("[%s]", viewNames[currentView])
-		ui.DrawText(screen, 2, height-1, status, tcell.StyleDefault.Foreground(tcell.ColorTeal))
+		ui.DrawText(screen, leftOffset, height-1, status, tcell.StyleDefault.Foreground(tcell.ColorTeal))
+		leftOffset += len(status) + 1
 
 		// Show help status
 		if showHelp {
-			ui.DrawText(screen, 2+len(status)+1, height-1, "📖", tcell.StyleDefault)
+			ui.DrawText(screen, leftOffset, height-1, "📖", tcell.StyleDefault)
+			leftOffset += 3
 		}
 	}
+
+	// Show update interval
+	intervalText := fmt.Sprintf("↻ %dms", *interval)
+	ui.DrawText(screen, leftOffset, height-1, intervalText, tcell.StyleDefault.Foreground(tcell.ColorYellow))
 
 	// Draw controls on the right
 	ui.DrawText(screen, width-len(footer)-2, height-1, footer,

@@ -11,8 +11,8 @@ import (
 )
 
 func TestParsePowerMetricsOutput(t *testing.T) {
-	// Read the sample file from project root
-	samplePath := filepath.Join("..", "..", "sample_output.txt")
+	// Read the sample file with --show-all format
+	samplePath := filepath.Join("..", "..", "sample_output_all.txt")
 	content, err := os.ReadFile(samplePath)
 	if err != nil {
 		t.Skipf("Sample file not found at %s: %v", samplePath, err)
@@ -31,6 +31,11 @@ func TestParsePowerMetricsOutput(t *testing.T) {
 
 		if len(state.Processes) == 0 {
 			t.Error("Expected processes to be parsed, but got 0")
+		}
+
+		// With --show-all we should have many more processes
+		if len(state.Processes) < 50 {
+			t.Errorf("Expected at least 50 processes with --show-all, got %d", len(state.Processes))
 		}
 
 		// Check specific process data
@@ -184,6 +189,52 @@ func TestProcessRegex(t *testing.T) {
 	if userPercent != "95.99" {
 		t.Errorf("Expected User%% 95.99, got %s", userPercent)
 	}
+}
+
+func TestParsePowerMetricsOutputAll(t *testing.T) {
+	// Test with --show-all format
+	sample, err := os.ReadFile("../../sample_output_all.txt")
+	if err != nil {
+		t.Skipf("sample_output_all.txt not found, skipping --show-all format test")
+		return
+	}
+
+	state := models.NewMetricsState()
+	ParsePowerMetricsOutput(string(sample), state)
+
+	// Test that we parsed many more processes with --show-all
+	if len(state.Processes) < 50 {
+		t.Errorf("Expected at least 50 processes with --show-all, got %d", len(state.Processes))
+	}
+
+	// Check some known processes from the sample
+	foundGhostty := false
+	foundNode := false
+	foundChrome := false
+
+	for _, proc := range state.Processes {
+		if strings.Contains(proc.Name, "ghostty") {
+			foundGhostty = true
+		}
+		if strings.Contains(proc.Name, "node") {
+			foundNode = true
+		}
+		if strings.Contains(proc.Name, "Chrome") {
+			foundChrome = true
+		}
+	}
+
+	if !foundGhostty {
+		t.Error("Expected to find ghostty process")
+	}
+	if !foundNode {
+		t.Error("Expected to find node process")
+	}
+	if !foundChrome {
+		t.Error("Expected to find Chrome process")
+	}
+
+	t.Logf("Parsed %d processes from --show-all format", len(state.Processes))
 }
 
 func TestInterruptRegex(t *testing.T) {
