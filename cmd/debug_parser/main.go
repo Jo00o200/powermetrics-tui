@@ -69,17 +69,6 @@ func main() {
 
 	var outputBuffer strings.Builder
 
-	// State tracking flags for proper section parsing
-	type ParserState int
-	const (
-		StateWaitingForSample ParserState = iota
-		StateInSample
-		StateInTaskSection
-	)
-
-	currentState := StateWaitingForSample
-	sampleCount := 0
-
 	// Track processes across samples
 	previousProcesses := make(map[int]ProcessInfo)
 	processSeenCount := make(map[int]int) // Track how many times we've seen each PID
@@ -88,20 +77,23 @@ func main() {
 	// This is critical for exit detection to work properly!
 	persistentState := models.NewMetricsState()
 
+	// Create state machine for consistent parsing
+	stateMachine := parser.NewStateMachine(persistentState)
+	stateMachine.EnableDebug(true) // Enable debug logging for state transitions
+	sampleCount := 0
+
 	maxSamples := 5  // Only run 5 iterations
 	for scanner.Scan() {
 		line := scanner.Text()
 
-		// State machine for proper section tracking
-		switch {
-		case strings.Contains(line, "*** Sampled system activity"):
-			// We found a new sample marker
-			if currentState == StateInSample && outputBuffer.Len() > 0 {
-				// Parse the previous complete sample
+		// Check if we have a new sample to process
+		if strings.Contains(line, "*** Sampled system activity") {
+			// Process previous complete sample if we have one
+			if outputBuffer.Len() > 0 {
 				sampleContent := outputBuffer.String()
 				sampleCount++
 
-				// Check for multiple samples/sections in buffer
+				// Analyze the sample content
 				sampledActivityCount := strings.Count(sampleContent, "*** Sampled system activity")
 				runningTasksCount := strings.Count(sampleContent, "*** Running tasks ***")
 				if sampledActivityCount > 0 {
@@ -112,64 +104,10 @@ func main() {
 				}
 				fmt.Printf("\nSample %d: ", sampleCount)
 
-				// Count lines in the Running tasks section using proper state tracking
-				type AnalyzerState int
-				const (
-					AnalyzerStateSearching AnalyzerState = iota
-					AnalyzerStateInTasks
-				)
-
-				analyzerState := AnalyzerStateSearching
-				taskLineCount := 0
-				coalitionCount := 0
-				subprocessCount := 0
-				taskSectionCount := 0
-
-				for _, line := range strings.Split(sampleContent, "\n") {
-					switch analyzerState {
-					case AnalyzerStateSearching:
-						if strings.Contains(line, "*** Running tasks ***") {
-							taskSectionCount++
-							analyzerState = AnalyzerStateInTasks
-						}
-
-					case AnalyzerStateInTasks:
-						// Check for section end conditions
-						if strings.HasPrefix(line, "***") {
-							analyzerState = AnalyzerStateSearching
-							continue
-						}
-						if strings.HasPrefix(line, "ALL_TASKS") {
-							// ALL_TASKS is the summary line at the end
-							analyzerState = AnalyzerStateSearching
-							continue
-						}
-
-						// Skip non-data lines
-						if strings.Contains(line, "Name") && strings.Contains(line, "ID") {
-							continue // Skip header
-						}
-						if strings.Contains(line, "----") {
-							continue // Skip separator
-						}
-						if strings.TrimSpace(line) == "" {
-							continue // Skip empty lines
-						}
-
-						// Count actual data lines
-						taskLineCount++
-						// Count coalitions vs subprocesses
-						if strings.HasPrefix(line, " ") || strings.HasPrefix(line, "\t") {
-							subprocessCount++
-						} else {
-							coalitionCount++
-						}
-					}
-				}
-
-				// Log the line counts immediately
-				if taskSectionCount > 1 {
-					fmt.Printf("⚠️ %d Task sections! ", taskSectionCount)
+				// Count lines in running tasks section for comparison
+				taskLineCount, coalitionCount, subprocessCount := countTaskLines(sampleContent)
+				if runningTasksCount > 1 {
+					fmt.Printf("⚠️ %d Task sections! ", runningTasksCount)
 				}
 				fmt.Printf("Task lines: %d (Coalitions: %d, Subprocesses: %d)",
 					taskLineCount, coalitionCount, subprocessCount)
@@ -185,8 +123,13 @@ func main() {
 					fmt.Printf(" [%d Chrome lines]", chromeCount)
 				}
 
-				// Parse using the persistent state (not a new one each time!)
-				parser.ParsePowerMetricsOutput(sampleContent, persistentState)
+				// Parse using the state machine (consistent with main parser)
+				stateMachine.Reset() // Reset for new sample
+				for _, sampleLine := range strings.Split(sampleContent, "\n") {
+					if err := stateMachine.ProcessLine(sampleLine); err != nil {
+						fmt.Printf("Parser error: %v\n", err)
+					}
+				}
 
 				// Log what the parser found
 				fmt.Printf(" → Parsed: %d processes, %d coalitions",
@@ -234,12 +177,8 @@ func main() {
 					fmt.Printf("(%d/%d found)\n", foundCount, len(watchPIDs))
 				}
 
-
-				// Skip all the detailed analysis - just update previous
-				// Analyze delta but don't print unless it's for watched PIDs
+				// Analyze delta and check for watched PIDs that disappeared
 				delta := analyzeDelta(previousProcesses, currentProcesses)
-
-				// Check if any watched PIDs disappeared
 				for _, p := range delta.Removed {
 					for _, watchPID := range watchPIDs {
 						if p.PID == watchPID {
@@ -264,41 +203,73 @@ func main() {
 					return
 				}
 			}
+
 			// Start new sample
 			outputBuffer.Reset()
-			currentState = StateInSample
-			// Don't include the header line itself in the buffer
-			continue
-
-		case strings.Contains(line, "*** Running tasks ***"):
-			// Mark that we're in the task section
-			if currentState == StateInSample {
-				currentState = StateInTaskSection
-			}
-
-		case strings.HasPrefix(line, "***"):
-			// Any other section marker - we're leaving the current section
-			if currentState == StateInTaskSection {
-				currentState = StateInSample
-			}
-
-		case strings.HasPrefix(line, "ALL_TASKS"):
-			// End of task section
-			if currentState == StateInTaskSection {
-				currentState = StateInSample
-			}
+			continue // Don't include the header line itself in the buffer
 		}
 
-		// Only buffer lines when we're actively in a sample
-		if currentState != StateWaitingForSample {
-			outputBuffer.WriteString(line)
-			outputBuffer.WriteString("\n")
-		}
+		// Buffer all other lines
+		outputBuffer.WriteString(line)
+		outputBuffer.WriteString("\n")
 	}
 
 	if err := scanner.Err(); err != nil {
 		fmt.Printf("Error reading powermetrics output: %v\n", err)
 	}
+}
+
+// countTaskLines analyzes the task section and counts lines for debugging
+func countTaskLines(content string) (taskLineCount, coalitionCount, subprocessCount int) {
+	type AnalyzerState int
+	const (
+		AnalyzerStateSearching AnalyzerState = iota
+		AnalyzerStateInTasks
+	)
+
+	analyzerState := AnalyzerStateSearching
+
+	for _, line := range strings.Split(content, "\n") {
+		switch analyzerState {
+		case AnalyzerStateSearching:
+			if strings.Contains(line, "*** Running tasks ***") {
+				analyzerState = AnalyzerStateInTasks
+			}
+
+		case AnalyzerStateInTasks:
+			// Check for section end conditions
+			if strings.HasPrefix(line, "***") {
+				analyzerState = AnalyzerStateSearching
+				continue
+			}
+			if strings.HasPrefix(line, "ALL_TASKS") {
+				analyzerState = AnalyzerStateSearching
+				continue
+			}
+
+			// Skip non-data lines
+			if strings.Contains(line, "Name") && strings.Contains(line, "ID") {
+				continue // Skip header
+			}
+			if strings.Contains(line, "----") {
+				continue // Skip separator
+			}
+			if strings.TrimSpace(line) == "" {
+				continue // Skip empty lines
+			}
+
+			// Count actual data lines
+			taskLineCount++
+			// Count coalitions vs subprocesses
+			if strings.HasPrefix(line, " ") || strings.HasPrefix(line, "\t") {
+				subprocessCount++
+			} else {
+				coalitionCount++
+			}
+		}
+	}
+
+	return taskLineCount, coalitionCount, subprocessCount
 }
 
 func analyzeDelta(previous, current map[int]ProcessInfo) ProcessDelta {
