@@ -17,9 +17,6 @@ func (h *CPUInterruptsHandler) Enter(ctx *ParserContext) {
 
 func (h *CPUInterruptsHandler) ProcessLine(ctx *ParserContext, line string) ParserState {
 	// Check for transitions out of this state
-	if IsNewSample(line) {
-		return StateWaitingForSample
-	}
 
 	if IsSection(line) && !strings.Contains(line, "CPU") {
 		return StateInSample

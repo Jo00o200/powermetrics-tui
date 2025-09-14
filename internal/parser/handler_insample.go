@@ -19,9 +19,6 @@ func (h *InSampleHandler) ProcessLine(ctx *ParserContext, line string) ParserSta
 	_ = strings.TrimSpace(line) // trimmed variable for future use
 
 	// Check for new sample (transition back to waiting)
-	if IsNewSample(line) {
-		return StateWaitingForSample
-	}
 
 	// Check for specific sections
 	if IsRunningTasks(line) {

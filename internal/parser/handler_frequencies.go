@@ -13,9 +13,6 @@ func (h *FrequenciesHandler) Enter(ctx *ParserContext) {
 
 func (h *FrequenciesHandler) ProcessLine(ctx *ParserContext, line string) ParserState {
 	// Check for transitions
-	if IsNewSample(line) {
-		return StateWaitingForSample
-	}
 
 	if IsSection(line) {
 		return StateInSample

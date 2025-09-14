@@ -199,6 +199,9 @@ func runPowerMetrics(samplerList string) {
 	buf := make([]byte, 0, 512*1024)
 	scanner.Buffer(buf, 512*1024)
 
+	// Create persistent parser
+	powerParser := parser.NewParser(metricsState)
+
 	var outputBuffer strings.Builder
 	inSample := false
 
@@ -210,7 +213,7 @@ func runPowerMetrics(samplerList string) {
 			if inSample && outputBuffer.Len() > 0 {
 				// Parse the previous complete sample
 				sampleContent := outputBuffer.String()
-				parser.ParsePowerMetricsOutput(sampleContent, metricsState)
+				powerParser.ParseOutput(sampleContent)
 				metricsState.Mu.Lock()
 				metricsState.LastUpdate = time.Now()
 				metricsState.Mu.Unlock()
@@ -229,7 +232,7 @@ func runPowerMetrics(samplerList string) {
 	// Parse any remaining sample when scanner exits
 	if inSample && outputBuffer.Len() > 0 {
 		sampleContent := outputBuffer.String()
-		parser.ParsePowerMetricsOutput(sampleContent, metricsState)
+		powerParser.ParseOutput(sampleContent)
 		metricsState.Mu.Lock()
 		metricsState.LastUpdate = time.Now()
 		metricsState.Mu.Unlock()
@@ -290,6 +293,9 @@ func drawUI(screen tcell.Screen) {
 	screen.Show()
 }
 
+// Build time variables (set via -ldflags)
+var BuildTime = "unknown"
+
 func drawFooter(screen tcell.Screen, width, height int) {
 	var footer string
 	if currentView == ui.ViewProcesses {
@@ -326,6 +332,11 @@ func drawFooter(screen tcell.Screen, width, height int) {
 	// Show update interval
 	intervalText := fmt.Sprintf("Interval: %dms", *interval)
 	ui.DrawText(screen, leftOffset, height-1, intervalText, tcell.StyleDefault.Foreground(tcell.ColorYellow))
+
+	// Draw build time on the left
+	buildStr := " Built: " + BuildTime + " "
+	ui.DrawText(screen, 1, height-1, buildStr,
+		tcell.StyleDefault.Foreground(tcell.ColorDarkGray))
 
 	// Draw controls on the right
 	ui.DrawText(screen, width-len(footer)-2, height-1, footer,

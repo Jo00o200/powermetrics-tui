@@ -10,6 +10,13 @@ import (
 	"powermetrics-tui/internal/models"
 )
 
+func min(a, b int) int {
+	if a < b {
+		return a
+	}
+	return b
+}
+
 func TestParsePowerMetricsOutput(t *testing.T) {
 	// Read the sample file with --show-all format
 	samplePath := filepath.Join("..", "..", "sample_output_all.txt")
@@ -273,19 +280,19 @@ func TestCPUFrequencyRegex(t *testing.T) {
 		expected map[string]string
 	}{
 		{
-			line: "CPU 0 frequency: 1058 MHz",
+			line:     "CPU 0 frequency: 1058 MHz",
 			expected: map[string]string{"cpu": "0", "freq": "1058"},
 		},
 		{
-			line: "CPU 1 frequency: 1051 MHz",
+			line:     "CPU 1 frequency: 1051 MHz",
 			expected: map[string]string{"cpu": "1", "freq": "1051"},
 		},
 		{
-			line: "CPU 2 frequency: 960 MHz",
+			line:     "CPU 2 frequency: 960 MHz",
 			expected: map[string]string{"cpu": "2", "freq": "960"},
 		},
 		{
-			line: "CPU 9 frequency: 1050 MHz",
+			line:     "CPU 9 frequency: 1050 MHz",
 			expected: map[string]string{"cpu": "9", "freq": "1050"},
 		},
 	}
@@ -443,6 +450,187 @@ func TestInterruptRegex(t *testing.T) {
 	}
 }
 
+func TestDeadProcessesParsing(t *testing.T) {
+	// Test parsing sample with dead processes (empty-name PIDs)
+	samplePath := filepath.Join("..", "..", "sample_output_dead_processes.txt")
+	content, err := os.ReadFile(samplePath)
+	if err != nil {
+		t.Skipf("Sample file not found at %s: %v", samplePath, err)
+	}
+
+	// Create a new state
+	state := models.NewMetricsState()
+
+	// Create persistent parser
+	parser := NewParser(state)
+
+	// Parse the output
+	parser.ParseOutput(string(content))
+
+	t.Run("Dead process detection", func(t *testing.T) {
+		state.Mu.RLock()
+		defer state.Mu.RUnlock()
+
+		// The sample shows PID 53571 with empty name
+		// It should NOT appear in active processes
+		for _, proc := range state.Processes {
+			if proc.PID == 53571 {
+				t.Errorf("Dead process PID 53571 should not be in active processes list, but found: %s", proc.Name)
+			}
+		}
+
+		// Check if it was tracked as an exited process
+		foundInExited := false
+		for _, exitInfo := range state.RecentlyExited {
+			for _, pid := range exitInfo.PIDs {
+				if pid == 53571 {
+					foundInExited = true
+					t.Logf("Dead process PID 53571 correctly tracked in RecentlyExited as: %s", exitInfo.Name)
+					break
+				}
+			}
+			if foundInExited {
+				break
+			}
+		}
+
+		if !foundInExited {
+			t.Error("Dead process PID 53571 should be tracked in RecentlyExited")
+		}
+
+		t.Logf("RecentlyExited processes: %d", len(state.RecentlyExited))
+		for _, exitInfo := range state.RecentlyExited {
+			t.Logf("  - %s (PIDs: %v, occurrences: %d)", exitInfo.Name, exitInfo.PIDs, exitInfo.Occurrences)
+		}
+	})
+
+	t.Run("DEAD_TASKS coalition handling", func(t *testing.T) {
+		state.Mu.RLock()
+		defer state.Mu.RUnlock()
+
+		// DEAD_TASKS_COALITION should not be in active coalitions
+		for _, coalition := range state.Coalitions {
+			if coalition.Name == "DEAD_TASKS_COALITION" {
+				t.Error("DEAD_TASKS_COALITION should not be in active coalitions list")
+			}
+		}
+
+		// DEAD_TASKS subprocess should not be in active processes
+		for _, proc := range state.Processes {
+			if proc.Name == "DEAD_TASKS" {
+				t.Error("DEAD_TASKS should not be in active processes list")
+			}
+		}
+	})
+
+	t.Run("Valid processes still parsed correctly", func(t *testing.T) {
+		state.Mu.RLock()
+		defer state.Mu.RUnlock()
+
+		// Ensure we still parsed valid processes
+		if len(state.Processes) == 0 {
+			t.Error("Expected valid processes to be parsed, but got 0")
+		}
+
+		if len(state.Coalitions) == 0 {
+			t.Error("Expected valid coalitions to be parsed, but got 0")
+		}
+
+		// Check for known valid processes from the sample
+		foundGhostty := false
+		foundPowermetrics := false
+		foundNode := false
+
+		for _, proc := range state.Processes {
+			if strings.Contains(proc.Name, "ghostty") {
+				foundGhostty = true
+			}
+			if strings.Contains(proc.Name, "powermetrics") {
+				foundPowermetrics = true
+			}
+			if strings.Contains(proc.Name, "node") {
+				foundNode = true
+			}
+		}
+
+		if !foundGhostty {
+			t.Error("Expected to find ghostty process")
+		}
+		if !foundPowermetrics {
+			t.Error("Expected to find powermetrics process")
+		}
+		if !foundNode {
+			t.Error("Expected to find node process")
+		}
+
+		t.Logf("Parsed %d valid processes and %d valid coalitions (excluding dead tasks)",
+			len(state.Processes), len(state.Coalitions))
+	})
+
+	t.Run("Sample file metadata", func(t *testing.T) {
+		// Verify the sample file contains expected dead process indicators
+		lines := strings.Split(string(content), "\n")
+		foundEmptyPID := false
+
+		for _, line := range lines {
+			// Look for the line with PID 53571 which should have empty name
+			if strings.Contains(line, "53571") && strings.Contains(line, "0.00      111.57") {
+				foundEmptyPID = true
+				// The line starts with spaces (empty name) then PID
+				trimmed := strings.TrimSpace(line)
+				if !strings.HasPrefix(trimmed, "53571") {
+					t.Errorf("Expected PID 53571 line to start with PID (empty name), but got: %s", trimmed[:min(20, len(trimmed))])
+				}
+				break
+			}
+		}
+
+		if !foundEmptyPID {
+			t.Error("Sample file should contain PID 53571 with empty name")
+		}
+	})
+
+	// Also test parsing with the original sample file that has comments
+	t.Run("Original sample with comments", func(t *testing.T) {
+		originalPath := filepath.Join("..", "..", "sample_output_dead_processes.txt")
+		originalContent, err := os.ReadFile(originalPath)
+		if err != nil {
+			t.Skip("Original sample file not found")
+		}
+
+		// Remove comment lines (lines starting with #)
+		lines := strings.Split(string(originalContent), "\n")
+		var cleanLines []string
+		for _, line := range lines {
+			if !strings.HasPrefix(line, "#") {
+				cleanLines = append(cleanLines, line)
+			}
+		}
+		cleanContent := strings.Join(cleanLines, "\n")
+
+		// Create new state and parser
+		state2 := models.NewMetricsState()
+		parser2 := NewParser(state2)
+		parser2.ParseOutput(cleanContent)
+
+		state2.Mu.RLock()
+		foundInExited := false
+		for _, exitInfo := range state2.RecentlyExited {
+			for _, pid := range exitInfo.PIDs {
+				if pid == 53571 {
+					foundInExited = true
+					break
+				}
+			}
+		}
+		state2.Mu.RUnlock()
+
+		if !foundInExited {
+			t.Error("Dead process PID 53571 should be tracked in RecentlyExited (original sample)")
+		}
+	})
+}
+
 func TestCompleteProcessClassification(t *testing.T) {
 	// Test that EVERY process in the sample is correctly classified as either coalition or subprocess
 	samplePath := filepath.Join("..", "..", "sample_output_all.txt")
@@ -457,14 +645,14 @@ func TestCompleteProcessClassification(t *testing.T) {
 	// Expected processes from the sample file (based on actual data)
 	expectedCoalitions := map[string]int{
 		"com.mitchellh.ghostty": 653,
-		"com.google.Chrome": 661,  // Updated to actual ID from sample
-		"kernel_coalition": 1,
+		"com.google.Chrome":     661, // Updated to actual ID from sample
+		"kernel_coalition":      1,
 	}
 
 	expectedSubprocesses := map[int]string{
-		24620: "powermetrics",    // under ghostty
-		13198: "ghostty",        // under ghostty
-		5165:  "esbuild",        // under ghostty
+		24620: "powermetrics", // under ghostty
+		13198: "ghostty",      // under ghostty
+		5165:  "esbuild",      // under ghostty
 	}
 
 	t.Run("All expected coalitions found", func(t *testing.T) {

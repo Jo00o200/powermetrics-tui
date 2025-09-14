@@ -1,9 +1,8 @@
 package parser
 
 import (
-	"os"
-	"os/exec"
 	"fmt"
+	"os/exec"
 	"strings"
 	"time"
 
@@ -34,9 +33,6 @@ func (h *RunningTasksHandler) ProcessLine(ctx *ParserContext, line string) Parse
 	trimmed := strings.TrimSpace(line)
 
 	// Check for transitions out of tasks section
-	if IsNewSample(line) {
-		return StateWaitingForSample
-	}
 
 	if IsEndOfTasks(line) {
 		return StateInSample
@@ -63,6 +59,14 @@ func (h *RunningTasksHandler) ProcessLine(ctx *ParserContext, line string) Parse
 		cpuMs, _ := ParseFloat(matches[3])
 		userPercent, _ := ParseFloat(matches[4])
 
+		// Handle empty names - these are likely processes that died during sampling
+		// Treat them as DEAD_TASKS
+		if name == "" {
+			// Give it a name indicating it's a dead process
+			name = fmt.Sprintf("<dead-process-%d>", id)
+			// Mark this as a dead/exited process immediately
+		}
+
 		// Convert CPU ms/s to percentage (approximate)
 		cpuPercent := cpuMs / 10.0
 
@@ -80,6 +84,18 @@ func (h *RunningTasksHandler) ProcessLine(ctx *ParserContext, line string) Parse
 }
 
 func (h *RunningTasksHandler) handleSubprocess(ctx *ParserContext, name string, id int, cpuPercent, userPercent float64) ParserState {
+	// Check if this is a dead process (marked with <dead-process- prefix)
+	isDead := strings.HasPrefix(name, "<dead-process-")
+
+	if isDead {
+		// Track this as an exited process immediately
+		processName := fmt.Sprintf("Unknown Process (PID %d)", id)
+		h.trackExitedProcess(ctx, id, processName, time.Now())
+
+		// Don't add to active processes list
+		return StateRunningTasks
+	}
+
 	// Update process history
 	if ctx.MetricsState.ProcessCPUHistory[id] == nil {
 		ctx.MetricsState.ProcessCPUHistory[id] = make([]float64, 0, 10)
@@ -123,6 +139,17 @@ func (h *RunningTasksHandler) handleCoalition(ctx *ParserContext, name string, i
 		ctx.NewCoalitions = append(ctx.NewCoalitions, *ctx.CurrentCoalition)
 	}
 
+	// Check if this is a dead process (marked with <dead-process- prefix)
+	if strings.HasPrefix(name, "<dead-process-") {
+		// Track this as an exited process immediately
+		processName := fmt.Sprintf("Unknown Process (PID %d)", id)
+		h.trackExitedProcess(ctx, id, processName, time.Now())
+
+		// Don't create a coalition for it
+		ctx.CurrentCoalition = nil
+		return StateRunningTasks
+	}
+
 	// Update coalition history
 	if ctx.MetricsState.CoalitionCPUHistory[id] == nil {
 		ctx.MetricsState.CoalitionCPUHistory[id] = make([]float64, 0, 10)
@@ -133,6 +160,12 @@ func (h *RunningTasksHandler) handleCoalition(ctx *ParserContext, name string, i
 		ctx.MetricsState.CoalitionMemHistory[id] = make([]float64, 0, 10)
 	}
 	ctx.MetricsState.CoalitionMemHistory[id] = models.AddToHistory(ctx.MetricsState.CoalitionMemHistory[id], userPercent, 10)
+
+	// Track coalition name
+	if ctx.MetricsState.CoalitionNames == nil {
+		ctx.MetricsState.CoalitionNames = make(map[int]string)
+	}
+	ctx.MetricsState.CoalitionNames[id] = name
 
 	// Create new coalition
 	ctx.CurrentCoalition = &models.ProcessCoalition{
@@ -169,15 +202,8 @@ func (h *RunningTasksHandler) Exit(ctx *ParserContext) {
 
 	// Update coalition names tracking
 	for _, coalition := range ctx.NewCoalitions {
-		if existingName, exists := ctx.MetricsState.CoalitionNames[coalition.CoalitionID]; !exists {
+		if _, exists := ctx.MetricsState.CoalitionNames[coalition.CoalitionID]; !exists {
 			ctx.MetricsState.CoalitionNames[coalition.CoalitionID] = coalition.Name
-		} else if existingName != coalition.Name {
-			// Log name change for debugging
-			if debugFile, err := os.OpenFile("/tmp/powermetrics-debug.log", os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0644); err == nil {
-				debugFile.WriteString(fmt.Sprintf("[%s] WARNING: Coalition ID %d name changed from '%s' to '%s'\n",
-					time.Now().Format("15:04:05"), coalition.CoalitionID, existingName, coalition.Name))
-				debugFile.Close()
-			}
 		}
 	}
 }
@@ -240,28 +266,16 @@ func (h *RunningTasksHandler) updateProcessTracking(ctx *ParserContext) {
 	// Check for processes that are no longer present
 	for pid := range ctx.MetricsState.LastSeenPIDs {
 		if !currentPIDs[pid] {
-			// Double-check this isn't actually a coalition ID
-			if currentCoalitionIDs[pid] {
-				delete(ctx.MetricsState.LastSeenPIDs, pid)
-				continue
-			}
-
 			processName := ctx.MetricsState.ProcessNames[pid]
 			if processName == "" {
-				// Ghost PID - clean up
-				if _, isCoalition := ctx.MetricsState.CoalitionNames[pid]; isCoalition {
-					delete(ctx.MetricsState.LastSeenPIDs, pid)
-					continue
-				}
-
-				// Log ghost PID for debugging
-				if debugFile, err := os.OpenFile("/tmp/powermetrics-debug.log", os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0644); err == nil {
-					debugFile.WriteString(fmt.Sprintf("[%s] GHOST PID %d in LastSeenPIDs but never parsed (no name)\n",
-						time.Now().Format("15:04:05"), pid))
-					debugFile.Close()
-				}
-
+				// This is a ghost PID - a PID in LastSeenPIDs without a name
+				// This can happen if the app was restarted with stale state
 				delete(ctx.MetricsState.LastSeenPIDs, pid)
+				delete(ctx.MetricsState.ProcessCPUHistory, pid)
+				delete(ctx.MetricsState.ProcessMemHistory, pid)
+				delete(ctx.MetricsState.ProcessNames, pid)  // Also clean this up just in case
+
+				// Don't log this anymore since we know it happens on startup
 				continue
 			}
 
@@ -295,17 +309,8 @@ func (h *RunningTasksHandler) updateProcessTracking(ctx *ParserContext) {
 	for _, proc := range ctx.NewProcesses {
 		ctx.MetricsState.LastSeenPIDs[proc.PID] = currentTime
 
-		// Set process name if not seen before
-		if existingName, exists := ctx.MetricsState.ProcessNames[proc.PID]; !exists {
-			ctx.MetricsState.ProcessNames[proc.PID] = proc.Name
-		} else if existingName != proc.Name {
-			// Log name change for debugging
-			if debugFile, err := os.OpenFile("/tmp/powermetrics-debug.log", os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0644); err == nil {
-				debugFile.WriteString(fmt.Sprintf("[%s] WARNING: PID %d name changed from '%s' to '%s'\n",
-					time.Now().Format("15:04:05"), proc.PID, existingName, proc.Name))
-				debugFile.Close()
-			}
-		}
+		// ALWAYS set process name when we see a process to prevent ghost PIDs
+		ctx.MetricsState.ProcessNames[proc.PID] = proc.Name
 
 		// Remove from recently exited if it reappeared (false positive)
 		h.removeFromRecentlyExited(ctx, proc.PID)
@@ -336,16 +341,22 @@ func (h *RunningTasksHandler) trackExitedProcess(ctx *ParserContext, pid int, pr
 	}
 
 	if !found {
-		if lastSeen, exists := ctx.MetricsState.LastSeenPIDs[pid]; exists {
-			exitedProc := models.ExitedProcessInfo{
-				Name:          processName,
-				PIDs:          []int{pid},
-				Occurrences:   1,
-				LastExitTime:  currentTime,
-				FirstSeenTime: lastSeen,
-			}
-			ctx.MetricsState.RecentlyExited = append(ctx.MetricsState.RecentlyExited, exitedProc)
+		// For dead processes, we might not have seen them before
+		// (they died during sampling), so LastSeenPIDs might not have them
+		lastSeen, exists := ctx.MetricsState.LastSeenPIDs[pid]
+		if !exists {
+			// For processes we've never seen, use current time as first seen
+			lastSeen = currentTime
 		}
+
+		exitedProc := models.ExitedProcessInfo{
+			Name:          processName,
+			PIDs:          []int{pid},
+			Occurrences:   1,
+			LastExitTime:  currentTime,
+			FirstSeenTime: lastSeen,
+		}
+		ctx.MetricsState.RecentlyExited = append(ctx.MetricsState.RecentlyExited, exitedProc)
 	}
 }
 

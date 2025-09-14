@@ -13,9 +13,6 @@ func (h *DiskIOHandler) Enter(ctx *ParserContext) {
 
 func (h *DiskIOHandler) ProcessLine(ctx *ParserContext, line string) ParserState {
 	// Check for transitions
-	if IsNewSample(line) {
-		return StateWaitingForSample
-	}
 
 	if IsSection(line) {
 		return StateInSample

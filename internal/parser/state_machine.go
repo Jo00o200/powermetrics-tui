@@ -151,6 +151,12 @@ func (sm *StateMachine) RegisterHandler(state ParserState, handler StateHandler)
 
 // ProcessLine processes a single line and manages state transitions
 func (sm *StateMachine) ProcessLine(line string) error {
+	// Global check for new sample - should reset to waiting state from any state
+	if sm.context.State != StateWaitingForSample && IsNewSample(line) {
+		sm.TransitionTo(StateWaitingForSample)
+		// Let the WaitingForSample handler process this line
+	}
+
 	handler, exists := sm.handlers[sm.context.State]
 	if !exists {
 		return fmt.Errorf("no handler for state %s", sm.context.State)
@@ -161,9 +167,7 @@ func (sm *StateMachine) ProcessLine(line string) error {
 
 	// Handle state transition if needed
 	if nextState != sm.context.State {
-		if sm.context.DebugEnabled {
-			fmt.Printf("State transition: %s -> %s\n", sm.context.State, nextState)
-		}
+		// Debug logging removed - no console output
 		sm.TransitionTo(nextState)
 	}
 
@@ -210,4 +214,17 @@ func (sm *StateMachine) Reset() {
 // EnableDebug enables debug logging for state transitions
 func (sm *StateMachine) EnableDebug(enabled bool) {
 	sm.context.DebugEnabled = enabled
+}
+
+// FinalizeCurrentState forces the Exit method of the current state handler
+// This is useful when parsing is complete and we need to commit data
+func (sm *StateMachine) FinalizeCurrentState() {
+	// If we're in RunningTasks state, call its Exit method to commit data
+	if sm.context.State == StateRunningTasks {
+		if handler, exists := sm.handlers[StateRunningTasks]; exists {
+			handler.Exit(sm.context)
+		}
+	}
+	// Reset to waiting state for next sample
+	sm.TransitionTo(StateWaitingForSample)
 }

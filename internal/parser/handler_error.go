@@ -16,9 +16,6 @@ func (h *ErrorHandler) Enter(ctx *ParserContext) {
 
 func (h *ErrorHandler) ProcessLine(ctx *ParserContext, line string) ParserState {
 	// Try to recover by looking for a new sample
-	if IsNewSample(line) {
-		return StateWaitingForSample
-	}
 
 	// Stay in error state until we find a new sample boundary
 	return StateError

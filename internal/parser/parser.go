@@ -2,9 +2,11 @@ package parser
 
 import (
 	"fmt"
+	"os"
 	"regexp"
 	"strconv"
 	"strings"
+	"time"
 
 	"powermetrics-tui/internal/models"
 )
@@ -62,88 +64,108 @@ var (
 	processRegex = regexp.MustCompile(`^(.+?)\s+(\d+)\s+([0-9.]+)\s+([0-9.]+)`)
 )
 
-// ParsePowerMetricsOutput parses the output from powermetrics command using a state machine
-func ParsePowerMetricsOutput(output string, state *models.MetricsState) {
-	state.Mu.Lock()
-	defer state.Mu.Unlock()
+// Parser maintains a persistent state machine for parsing powermetrics output
+type Parser struct {
+	stateMachine *StateMachine
+	state        *models.MetricsState
+}
+
+// NewParser creates a new parser with a persistent state machine
+func NewParser(state *models.MetricsState) *Parser {
+	return &Parser{
+		stateMachine: NewStateMachine(state),
+		state:        state,
+	}
+}
+
+// ParseOutput parses powermetrics output using the persistent state machine
+func (p *Parser) ParseOutput(output string) {
+	p.state.Mu.Lock()
+	defer p.state.Mu.Unlock()
 
 	// Initialize maps if needed
-	if state.AllSeenCPUs == nil {
-		state.AllSeenCPUs = make(map[string]bool)
+	if p.state.AllSeenCPUs == nil {
+		p.state.AllSeenCPUs = make(map[string]bool)
 	}
-	if state.PerCPUInterrupts == nil {
-		state.PerCPUInterrupts = make(map[string]float64)
+	if p.state.PerCPUInterrupts == nil {
+		p.state.PerCPUInterrupts = make(map[string]float64)
 	}
-	if state.PerCPUIPIs == nil {
-		state.PerCPUIPIs = make(map[string]float64)
+	if p.state.PerCPUIPIs == nil {
+		p.state.PerCPUIPIs = make(map[string]float64)
 	}
-	if state.PerCPUTimers == nil {
-		state.PerCPUTimers = make(map[string]float64)
+	if p.state.PerCPUTimers == nil {
+		p.state.PerCPUTimers = make(map[string]float64)
 	}
 
-	// Create state machine
-	stateMachine := NewStateMachine(state)
-
-	// Process each line through the state machine
+	// Process each line through the persistent state machine
 	lines := strings.Split(output, "\n")
 	for _, rawLine := range lines {
-		if err := stateMachine.ProcessLine(rawLine); err != nil {
-			// Log error but continue processing
-			fmt.Printf("Parser error: %v\n", err)
+		if err := p.stateMachine.ProcessLine(rawLine); err != nil {
+			// Log error to debug file, not console
+			if debugFile, err2 := os.OpenFile("/tmp/powermetrics-debug.log", os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0644); err2 == nil {
+				debugFile.WriteString(fmt.Sprintf("[%s] Parser error: %v\n",
+					time.Now().Format("15:04:05"), err))
+				debugFile.Close()
+			}
 		}
 	}
 
-	// Get the accumulated values from the state machine context
-	ctx := stateMachine.GetContext()
+	// Get the accumulated values from the state machine context BEFORE finalizing
+	// (FinalizeCurrentState transitions to WaitingForSample which resets these)
+	ctx := p.stateMachine.GetContext()
 
 	// Update interrupt totals
 	if ctx.IPITotal > 0 {
-		state.IPICount = int(ctx.IPITotal)
+		p.state.IPICount = int(ctx.IPITotal)
 	}
 	if ctx.TimerTotal > 0 {
-		state.TimerCount = int(ctx.TimerTotal)
+		p.state.TimerCount = int(ctx.TimerTotal)
 	}
 	if ctx.InterruptsTotal > 0 {
-		state.TotalInterrupts = int(ctx.InterruptsTotal)
+		p.state.TotalInterrupts = int(ctx.InterruptsTotal)
 	}
+
+	// Force final processing if we're in RunningTasks state
+	// This ensures the Exit method is called to commit the data
+	p.stateMachine.FinalizeCurrentState()
 
 	// Note: Process and coalition tracking is now handled in the TasksHandler's Exit method
 
 	// Organize CPU frequencies based on what we detected
-	organizeCPUFrequencies(state)
+	organizeCPUFrequencies(p.state)
 
 	// Update per-CPU interrupt history for all known CPUs
 	// Since we reset all CPUs to 0 at the start, this will include zeros for missing CPUs
-	for cpu := range state.AllSeenCPUs {
-		total := state.PerCPUInterrupts[cpu] // Will be 0 if CPU wasn't in this sample
-		if state.PerCPUInterruptHistory[cpu] == nil {
-			state.PerCPUInterruptHistory[cpu] = make([]float64, 0, 30)
+	for cpu := range p.state.AllSeenCPUs {
+		total := p.state.PerCPUInterrupts[cpu] // Will be 0 if CPU wasn't in this sample
+		if p.state.PerCPUInterruptHistory[cpu] == nil {
+			p.state.PerCPUInterruptHistory[cpu] = make([]float64, 0, 30)
 		}
-		state.PerCPUInterruptHistory[cpu] = models.AddToHistory(state.PerCPUInterruptHistory[cpu], total, 30)
+		p.state.PerCPUInterruptHistory[cpu] = models.AddToHistory(p.state.PerCPUInterruptHistory[cpu], total, 30)
 	}
 
 	// Update history
-	state.History.IPIHistory = models.AddToIntHistory(state.History.IPIHistory, state.IPICount, state.History.MaxHistory)
-	state.History.TimerHistory = models.AddToIntHistory(state.History.TimerHistory, state.TimerCount, state.History.MaxHistory)
-	state.History.TotalHistory = models.AddToIntHistory(state.History.TotalHistory, state.TotalInterrupts, state.History.MaxHistory)
-	state.History.CPUPowerHistory = models.AddToHistory(state.History.CPUPowerHistory, state.CPUPower, state.History.MaxHistory)
-	state.History.GPUPowerHistory = models.AddToHistory(state.History.GPUPowerHistory, state.GPUPower, state.History.MaxHistory)
-	state.History.SystemHistory = models.AddToHistory(state.History.SystemHistory, state.SystemPower, state.History.MaxHistory)
-	state.History.NetworkInHistory = models.AddToHistory(state.History.NetworkInHistory, state.NetworkIn, state.History.MaxHistory)
-	state.History.NetworkOutHistory = models.AddToHistory(state.History.NetworkOutHistory, state.NetworkOut, state.History.MaxHistory)
-	state.History.DiskReadHistory = models.AddToHistory(state.History.DiskReadHistory, state.DiskRead, state.History.MaxHistory)
-	state.History.DiskWriteHistory = models.AddToHistory(state.History.DiskWriteHistory, state.DiskWrite, state.History.MaxHistory)
-	state.History.BatteryHistory = models.AddToHistory(state.History.BatteryHistory, state.BatteryCharge, state.History.MaxHistory)
-	state.History.MemoryHistory = models.AddToHistory(state.History.MemoryHistory, state.MemoryUsed, state.History.MaxHistory)
+	p.state.History.IPIHistory = models.AddToIntHistory(p.state.History.IPIHistory, p.state.IPICount, p.state.History.MaxHistory)
+	p.state.History.TimerHistory = models.AddToIntHistory(p.state.History.TimerHistory, p.state.TimerCount, p.state.History.MaxHistory)
+	p.state.History.TotalHistory = models.AddToIntHistory(p.state.History.TotalHistory, p.state.TotalInterrupts, p.state.History.MaxHistory)
+	p.state.History.CPUPowerHistory = models.AddToHistory(p.state.History.CPUPowerHistory, p.state.CPUPower, p.state.History.MaxHistory)
+	p.state.History.GPUPowerHistory = models.AddToHistory(p.state.History.GPUPowerHistory, p.state.GPUPower, p.state.History.MaxHistory)
+	p.state.History.SystemHistory = models.AddToHistory(p.state.History.SystemHistory, p.state.SystemPower, p.state.History.MaxHistory)
+	p.state.History.NetworkInHistory = models.AddToHistory(p.state.History.NetworkInHistory, p.state.NetworkIn, p.state.History.MaxHistory)
+	p.state.History.NetworkOutHistory = models.AddToHistory(p.state.History.NetworkOutHistory, p.state.NetworkOut, p.state.History.MaxHistory)
+	p.state.History.DiskReadHistory = models.AddToHistory(p.state.History.DiskReadHistory, p.state.DiskRead, p.state.History.MaxHistory)
+	p.state.History.DiskWriteHistory = models.AddToHistory(p.state.History.DiskWriteHistory, p.state.DiskWrite, p.state.History.MaxHistory)
+	p.state.History.BatteryHistory = models.AddToHistory(p.state.History.BatteryHistory, p.state.BatteryCharge, p.state.History.MaxHistory)
+	p.state.History.MemoryHistory = models.AddToHistory(p.state.History.MemoryHistory, p.state.MemoryUsed, p.state.History.MaxHistory)
 
 	// Update average temperature
-	if len(state.Temperature) > 0 {
+	if len(p.state.Temperature) > 0 {
 		var avgTemp float64
-		for _, temp := range state.Temperature {
+		for _, temp := range p.state.Temperature {
 			avgTemp += temp
 		}
-		avgTemp /= float64(len(state.Temperature))
-		state.History.TempHistory = models.AddToHistory(state.History.TempHistory, avgTemp, state.History.MaxHistory)
+		avgTemp /= float64(len(p.state.Temperature))
+		p.state.History.TempHistory = models.AddToHistory(p.state.History.TempHistory, avgTemp, p.state.History.MaxHistory)
 	}
 }
 
@@ -274,4 +296,11 @@ func organizeCPUFrequencies(state *models.MetricsState) {
 	}
 
 	// Keep the AllCpuFreq for reference/debugging
+}
+
+// ParsePowerMetricsOutput is the legacy API that creates a new parser each time
+// DEPRECATED: Use NewParser().ParseOutput() for better performance and to save bad samples
+func ParsePowerMetricsOutput(output string, state *models.MetricsState) {
+	parser := NewParser(state)
+	parser.ParseOutput(output)
 }
