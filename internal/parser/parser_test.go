@@ -450,6 +450,39 @@ func TestInterruptRegex(t *testing.T) {
 	}
 }
 
+func TestPowerParsing(t *testing.T) {
+	t.Run("Power metrics parsing", func(t *testing.T) {
+		input := `*** Sampled system activity (Sun Sep 14 10:45:00 2024 -0400) (1000.87ms elapsed) ***
+
+CPU Power: 44 mW
+GPU Power: 10 mW
+ANE Power: 0 mW
+Combined Power (CPU + GPU + ANE): 54 mW
+`
+		state := &models.MetricsState{
+			History: &models.HistoricalData{
+				MaxHistory: 30,
+			},
+		}
+		parser := NewParser(state)
+		parser.ParseOutput(input)
+
+		if state.CPUPower != 44 {
+			t.Errorf("Expected CPU power 44 mW, got %.2f", state.CPUPower)
+		}
+		if state.GPUPower != 10 {
+			t.Errorf("Expected GPU power 10 mW, got %.2f", state.GPUPower)
+		}
+		if state.ANEPower != 0 {
+			t.Errorf("Expected ANE power 0 mW, got %.2f", state.ANEPower)
+		}
+
+		t.Logf("CPU Power: %.2f mW", state.CPUPower)
+		t.Logf("GPU Power: %.2f mW", state.GPUPower)
+		t.Logf("ANE Power: %.2f mW", state.ANEPower)
+	})
+}
+
 func TestThermalAndBatteryParsing(t *testing.T) {
 	t.Run("Thermal and Battery parsing", func(t *testing.T) {
 		input := `*** Sampled system activity (Sun Sep 14 10:45:00 2024 -0400) (1000.87ms elapsed) ***
@@ -472,6 +505,7 @@ Battery: percent_charge: 100
 
 		t.Logf("Thermal Pressure: '%s'", state.ThermalPressure)
 		t.Logf("Battery Charge: %.2f%%", state.BatteryCharge)
+		t.Logf("Battery History: %v", state.History.BatteryHistory)
 
 		if state.ThermalPressure != "Nominal" {
 			t.Errorf("Expected thermal pressure 'Nominal', got '%s'", state.ThermalPressure)

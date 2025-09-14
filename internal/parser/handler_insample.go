@@ -46,6 +46,36 @@ func (h *InSampleHandler) ProcessLine(ctx *ParserContext, line string) ParserSta
 	if cpuPowerRegex.MatchString(line) || gpuPowerRegex.MatchString(line) ||
 	   anePowerRegex.MatchString(line) || dramPowerRegex.MatchString(line) ||
 	   systemPowerRegex.MatchString(line) {
+		// Parse power metrics inline
+		if matches := cpuPowerRegex.FindStringSubmatch(line); matches != nil {
+			if val, err := ParseFloat(matches[1]); err == nil {
+				ctx.MetricsState.CPUPower = val
+			}
+		}
+		if matches := gpuPowerRegex.FindStringSubmatch(line); matches != nil {
+			if val, err := ParseFloat(matches[1]); err == nil {
+				ctx.MetricsState.GPUPower = val
+			}
+		}
+		if matches := anePowerRegex.FindStringSubmatch(line); matches != nil {
+			if val, err := ParseFloat(matches[1]); err == nil {
+				ctx.MetricsState.ANEPower = val
+			}
+		}
+		if matches := dramPowerRegex.FindStringSubmatch(line); matches != nil {
+			if val, err := ParseFloat(matches[1]); err == nil {
+				ctx.MetricsState.DRAMPower = val
+			}
+		}
+		if matches := systemPowerRegex.FindStringSubmatch(line); matches != nil {
+			if val, err := ParseFloat(matches[1]); err == nil {
+				// Convert watts to milliwatts if needed
+				if strings.Contains(line, "Watts") {
+					val *= 1000
+				}
+				ctx.MetricsState.SystemPower = val
+			}
+		}
 		return StatePowerMetrics
 	}
 

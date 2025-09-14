@@ -31,7 +31,54 @@ func DrawBar(screen tcell.Screen, x, y, width int, value, max float64, color tce
 	}
 }
 
-// DrawSparkline draws a sparkline chart
+// DrawSparklineWithRange draws a sparkline with specified min/max range
+func DrawSparklineWithRange(screen tcell.Screen, x, y, width int, data []float64, minVal, maxVal float64, color tcell.Color) {
+	if len(data) == 0 {
+		return
+	}
+
+	// Unicode block characters for sparkline
+	ticks := []rune{'▁', '▂', '▃', '▄', '▅', '▆', '▇', '█'}
+
+	// Use provided min/max range
+	min, max := minVal, maxVal
+	if max <= min {
+		max = min + 1 // Avoid division by zero
+	}
+
+	// Convert values to tick levels
+	levels := make([]int, 0, len(data))
+	for _, v := range data {
+		// Clamp value to range
+		if v < min {
+			v = min
+		}
+		if v > max {
+			v = max
+		}
+		// Scale to 0-7 (8 levels)
+		level := int(((v - min) / (max - min)) * 7)
+		if level < 0 {
+			level = 0
+		}
+		if level > 7 {
+			level = 7
+		}
+		levels = append(levels, level)
+	}
+
+	// Draw sparkline - show the most recent 'width' samples from the end
+	start := 0
+	if len(levels) > width {
+		start = len(levels) - width
+	}
+
+	for i := 0; i < width && start+i < len(levels); i++ {
+		screen.SetContent(x+i, y, ticks[levels[start+i]], nil, tcell.StyleDefault.Foreground(color))
+	}
+}
+
+// DrawSparkline draws a sparkline chart (auto-scales to data range)
 func DrawSparkline(screen tcell.Screen, x, y, width int, data []float64, color tcell.Color) {
 	if len(data) == 0 {
 		return

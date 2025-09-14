@@ -772,7 +772,8 @@ func DrawBatteryViewWithStartY(screen tcell.Screen, state *models.MetricsState, 
 	if len(state.History.BatteryHistory) > 0 {
 		DrawText(screen, 2, y, "Charge History:", tcell.StyleDefault.Bold(true))
 		y++
-		DrawSparkline(screen, 4, y, width-10, state.History.BatteryHistory, chargeColor)
+		// Use fixed 0-100% range for battery
+		DrawSparklineWithRange(screen, 4, y, width-10, state.History.BatteryHistory, 0, 100, chargeColor)
 		y += 2
 	}
 
