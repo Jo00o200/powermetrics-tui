@@ -2,6 +2,7 @@ package parser
 
 import (
 	"fmt"
+	"regexp"
 
 	"powermetrics-tui/internal/models"
 )
@@ -12,6 +13,7 @@ type ParserState int
 const (
 	StateWaitingForSample ParserState = iota
 	StateInSample
+	StateProcessorUsage
 	StateCPUInterrupts
 	StatePowerMetrics
 	StateFrequencies
@@ -19,6 +21,9 @@ const (
 	StateDiskIO
 	StateMemoryStats
 	StateThermalData
+	StateGPUUsage
+	StateBattery
+	StateSFI
 	StateRunningTasks
 	StateTasksCoalition
 	StateTasksSubprocess
@@ -32,6 +37,8 @@ func (s ParserState) String() string {
 		return "WaitingForSample"
 	case StateInSample:
 		return "InSample"
+	case StateProcessorUsage:
+		return "ProcessorUsage"
 	case StateCPUInterrupts:
 		return "CPUInterrupts"
 	case StatePowerMetrics:
@@ -46,6 +53,12 @@ func (s ParserState) String() string {
 		return "MemoryStats"
 	case StateThermalData:
 		return "ThermalData"
+	case StateGPUUsage:
+		return "GPUUsage"
+	case StateBattery:
+		return "Battery"
+	case StateSFI:
+		return "SFI"
 	case StateRunningTasks:
 		return "RunningTasks"
 	case StateTasksCoalition:
@@ -131,6 +144,7 @@ func NewStateMachine(metricsState *models.MetricsState) *StateMachine {
 	// Register all state handlers
 	sm.RegisterHandler(StateWaitingForSample, &WaitingForSampleHandler{})
 	sm.RegisterHandler(StateInSample, &InSampleHandler{})
+	sm.RegisterHandler(StateProcessorUsage, &ProcessorUsageHandler{})
 	sm.RegisterHandler(StateCPUInterrupts, &CPUInterruptsHandler{})
 	sm.RegisterHandler(StatePowerMetrics, &PowerMetricsHandler{})
 	sm.RegisterHandler(StateFrequencies, &FrequenciesHandler{})
@@ -138,6 +152,9 @@ func NewStateMachine(metricsState *models.MetricsState) *StateMachine {
 	sm.RegisterHandler(StateDiskIO, &DiskIOHandler{})
 	sm.RegisterHandler(StateMemoryStats, &MemoryStatsHandler{})
 	sm.RegisterHandler(StateThermalData, &ThermalDataHandler{})
+	sm.RegisterHandler(StateGPUUsage, &GPUUsageHandler{})
+	sm.RegisterHandler(StateBattery, &BatteryHandler{})
+	sm.RegisterHandler(StateSFI, &SFIHandler{})
 	sm.RegisterHandler(StateRunningTasks, &RunningTasksHandler{})
 	sm.RegisterHandler(StateError, &ErrorHandler{})
 
@@ -157,6 +174,16 @@ func (sm *StateMachine) ProcessLine(line string) error {
 		// Let the WaitingForSample handler process this line
 	}
 
+	// Check for section headers and route appropriately (except in WaitingForSample state)
+	if sm.context.State != StateWaitingForSample && IsSection(line) {
+		// Route to appropriate section handler
+		nextState := sm.routeSection(line)
+		if nextState != sm.context.State {
+			sm.TransitionTo(nextState)
+			return nil // Don't process this line further
+		}
+	}
+
 	handler, exists := sm.handlers[sm.context.State]
 	if !exists {
 		return fmt.Errorf("no handler for state %s", sm.context.State)
@@ -172,6 +199,56 @@ func (sm *StateMachine) ProcessLine(line string) error {
 	}
 
 	return nil
+}
+
+// Section header patterns - flexible regex to handle variations
+var (
+	sectionProcessorUsage = regexp.MustCompile(`\*+\s*Processor usage\s*\*+`)
+	sectionRunningTasks   = regexp.MustCompile(`\*+\s*Running tasks\s*\*+`)
+	sectionInterrupts     = regexp.MustCompile(`\*+\s*Interrupt distribution\s*\*+`)
+	sectionNetworkIO      = regexp.MustCompile(`\*+\s*Network activity\s*\*+`)
+	sectionDiskIO         = regexp.MustCompile(`\*+\s*Disk activity\s*\*+`)
+	sectionThermal        = regexp.MustCompile(`\*+\s*Thermal pressure\s*\*+`)
+	sectionMemory         = regexp.MustCompile(`\*+\s*System memory\s*\*+`)
+	sectionPowerMetrics   = regexp.MustCompile(`\*+\s*Power\s*\*+`)
+	sectionFrequencies    = regexp.MustCompile(`\*+\s*Frequency\s*\*+`)
+	sectionGPUUsage       = regexp.MustCompile(`\*+\s*GPU usage\s*\*+`)
+	sectionBattery        = regexp.MustCompile(`\*+\s*Battery and backlight usage\s*\*+`)
+	sectionSFI            = regexp.MustCompile(`\*+\s*Selective Forced Idle\s*\*+`)
+)
+
+// routeSection determines which state to transition to based on section header
+func (sm *StateMachine) routeSection(line string) ParserState {
+	// Use regex patterns for flexible section matching
+	switch {
+	case sectionProcessorUsage.MatchString(line):
+		return StateProcessorUsage
+	case sectionRunningTasks.MatchString(line):
+		return StateRunningTasks
+	case sectionInterrupts.MatchString(line):
+		return StateCPUInterrupts
+	case sectionNetworkIO.MatchString(line):
+		return StateNetworkIO
+	case sectionDiskIO.MatchString(line):
+		return StateDiskIO
+	case sectionThermal.MatchString(line):
+		return StateThermalData
+	case sectionMemory.MatchString(line):
+		return StateMemoryStats
+	case sectionPowerMetrics.MatchString(line):
+		return StatePowerMetrics
+	case sectionFrequencies.MatchString(line):
+		return StateFrequencies
+	case sectionGPUUsage.MatchString(line):
+		return StateGPUUsage
+	case sectionBattery.MatchString(line):
+		return StateBattery
+	case sectionSFI.MatchString(line):
+		return StateSFI
+	default:
+		// For sections we don't have dedicated handlers yet, stay in InSample
+		return StateInSample
+	}
 }
 
 // TransitionTo transitions to a new state

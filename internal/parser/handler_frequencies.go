@@ -19,23 +19,15 @@ func (h *FrequenciesHandler) ProcessLine(ctx *ParserContext, line string) Parser
 	}
 
 	// Parse E-core frequencies
-	if matches := ecoreFreqRegex.FindStringSubmatch(line); matches != nil {
-		if freq, err := ParseInt(matches[1]); err == nil {
-			if ctx.MetricsState.ECoreFreq == nil {
-				ctx.MetricsState.ECoreFreq = make([]int, 0)
-			}
-			ctx.MetricsState.ECoreFreq = append(ctx.MetricsState.ECoreFreq, freq)
-		}
+	// For now, we track these for debugging but don't store in state
+	if ecoreFreqRegex.MatchString(line) {
+		ctx.CurrentCluster = "E"
 	}
 
 	// Parse P-core frequencies
-	if matches := pcoreFreqRegex.FindStringSubmatch(line); matches != nil {
-		if freq, err := ParseInt(matches[1]); err == nil {
-			if ctx.MetricsState.PCoreFreq == nil {
-				ctx.MetricsState.PCoreFreq = make([]int, 0)
-			}
-			ctx.MetricsState.PCoreFreq = append(ctx.MetricsState.PCoreFreq, freq)
-		}
+	// For now, we track these for debugging but don't store in state
+	if pcoreFreqRegex.MatchString(line) {
+		ctx.CurrentCluster = "P"
 	}
 
 	// Parse GPU frequency

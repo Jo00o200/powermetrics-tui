@@ -2,7 +2,6 @@ package ui
 
 import (
 	"fmt"
-	"os/exec"
 	"sort"
 	"strings"
 	"time"
@@ -339,14 +338,35 @@ func DrawFrequencyViewWithStartY(screen tcell.Screen, state *models.MetricsState
 		y++
 	}
 
-	// GPU frequency
-	if state.GPUFreq > 0 {
-		DrawText(screen, 2, y, fmt.Sprintf("GPU:    %4d MHz", state.GPUFreq), tcell.StyleDefault)
-		DrawBar(screen, 25, y, width-30, float64(state.GPUFreq), 2000, tcell.ColorGreen)
+	// GPU frequency (always show, even when 0)
+	gpuLabel := fmt.Sprintf("GPU:    %4d MHz", state.GPUFreq)
+
+	// Color based on activity
+	textColor := tcell.StyleDefault
+	barColor := tcell.ColorGreen
+	sparkColor := tcell.ColorDarkGreen
+	if state.GPUFreq == 0 {
+		textColor = tcell.StyleDefault.Foreground(tcell.ColorGray)
+		barColor = tcell.ColorDarkGray
+		sparkColor = tcell.ColorDarkGray
+		gpuLabel = "GPU:       0 MHz (idle)"
+	}
+
+	DrawText(screen, 2, y, gpuLabel, textColor)
+	DrawBar(screen, 25, y, width-30, float64(state.GPUFreq), 2000, barColor)
+	y++
+
+	// Draw GPU frequency history sparkline
+	if len(state.GPUFreqHistory) > 0 {
+		DrawSparkline(screen, 25, y, width-30, state.GPUFreqHistory, sparkColor)
+		y++
 	}
 
 	// Show a note if no frequency data is available
-	if len(state.ECoreFreq) == 0 && len(state.PCoreFreq) == 0 && state.GPUFreq == 0 {
+	// Check if we have no frequency data at all (including history)
+	hasFreqData := len(state.ECoreFreq) > 0 || len(state.PCoreFreq) > 0 ||
+		len(state.GPUFreqHistory) > 0 || len(state.AllCpuFreq) > 0
+	if !hasFreqData {
 		DrawText(screen, 2, y, "No frequency data available.", tcell.StyleDefault.Foreground(tcell.ColorGray))
 		y += 2
 		DrawText(screen, 2, y, "Try running with --samplers cpu_power", tcell.StyleDefault.Foreground(tcell.ColorGray))
@@ -502,9 +522,9 @@ func DrawProcessesViewWithStartY(screen tcell.Screen, state *models.MetricsState
 		DrawText(screen, 2, y, exitedTitle, tcell.StyleDefault.Bold(true).Foreground(tcell.ColorGray))
 		y++
 
-		// Header for exited processes with verification column
-		exitHeader := fmt.Sprintf("%-30s %12s %15s %-20s %8s",
-			"Process", "Occurrences", "Last Seen", "PIDs", "Verified")
+		// Header for exited processes
+		exitHeader := fmt.Sprintf("%-30s %12s %15s %-20s",
+			"Process", "Occurrences", "Last Seen", "PIDs")
 		DrawText(screen, 2, y, exitHeader, tcell.StyleDefault.Bold(true).Foreground(tcell.ColorGray))
 		y++
 
@@ -572,20 +592,6 @@ func DrawProcessesViewWithStartY(screen tcell.Screen, state *models.MetricsState
 				occurrencesStr = "1x"
 			}
 
-			// Check if all PIDs are actually dead
-			verificationStatus := "✓" // checkmark for all dead
-			verificationColor := tcell.ColorGreen
-
-			for _, pid := range proc.PIDs {
-				psCmd := exec.Command("ps", "-p", fmt.Sprintf("%d", pid), "-o", "pid=")
-				if err := psCmd.Run(); err == nil {
-					// Process is still alive!
-					verificationStatus = "✗" // X for some alive
-					verificationColor = tcell.ColorRed
-					break
-				}
-			}
-
 			line := fmt.Sprintf("%-30s %12s %15s %-20s",
 				processName, occurrencesStr, lastSeenStr, pidsStr)
 
@@ -596,8 +602,6 @@ func DrawProcessesViewWithStartY(screen tcell.Screen, state *models.MetricsState
 			}
 
 			DrawText(screen, 2, y, line, tcell.StyleDefault.Foreground(color))
-			// Draw verification status with appropriate color
-			DrawText(screen, 2+len(line)+1, y, verificationStatus, tcell.StyleDefault.Foreground(verificationColor))
 			y++
 		}
 	}

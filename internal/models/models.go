@@ -41,6 +41,7 @@ type MetricsState struct {
 	// CPU frequency history (per core)
 	ECoreFreqHistory map[int][]float64 // Core index -> frequency history
 	PCoreFreqHistory map[int][]float64 // Core index -> frequency history
+	GPUFreqHistory   []float64          // GPU frequency history
 
 	// Network
 	NetworkIn  float64
@@ -51,12 +52,16 @@ type MetricsState struct {
 	DiskWrite float64
 
 	// Battery
-	BatteryCharge float64
-	BatteryState  string
+	BatteryCharge  float64
+	BatteryState   string
+	BacklightLevel int
 
 	// Thermal
 	ThermalPressure string
 	Temperature     map[string]float64
+
+	// GPU
+	GPUActive float64  // GPU active residency percentage
 
 	// System memory
 	MemoryUsed      float64

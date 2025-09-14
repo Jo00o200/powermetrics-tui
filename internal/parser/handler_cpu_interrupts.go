@@ -1,9 +1,5 @@
 package parser
 
-import (
-	"strings"
-)
-
 // CPUInterruptsHandler handles CPU interrupt parsing
 type CPUInterruptsHandler struct{}
 
@@ -17,8 +13,7 @@ func (h *CPUInterruptsHandler) Enter(ctx *ParserContext) {
 
 func (h *CPUInterruptsHandler) ProcessLine(ctx *ParserContext, line string) ParserState {
 	// Check for transitions out of this state
-
-	if IsSection(line) && !strings.Contains(line, "CPU") {
+	if IsSection(line) {
 		return StateInSample
 	}
 

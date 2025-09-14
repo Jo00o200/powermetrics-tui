@@ -38,7 +38,7 @@ var (
 	// CPU frequency patterns (various formats)
 	ecoreFreqRegex = regexp.MustCompile(`E-Cluster HW active frequency:\s+([0-9]+)\s*MHz`)
 	pcoreFreqRegex = regexp.MustCompile(`P\d*-Cluster HW active frequency:\s+([0-9]+)\s*MHz`)  // Matches P0-Cluster, P1-Cluster, P-Cluster
-	gpuFreqRegex   = regexp.MustCompile(`(?:GPU active frequency|GPU frequency):\s+([0-9]+)\s*MHz`)
+	gpuFreqRegex   = regexp.MustCompile(`(?:GPU HW active frequency|GPU active frequency|GPU frequency):\s+([0-9]+)\s*MHz`)
 
 	// Per-CPU frequency
 	cpuFreqRegex   = regexp.MustCompile(`CPU (\d+) frequency:\s+([0-9]+)\s*MHz`)
@@ -62,6 +62,12 @@ var (
 	// Format: Name (padded to ~35 chars) ID CPU_ms/s User% ...
 	// Using a simpler approach: capture everything before the first number as name
 	processRegex = regexp.MustCompile(`^(.+?)\s+(\d+)\s+([0-9.]+)\s+([0-9.]+)`)
+
+	// GPU usage patterns
+	gpuActiveRegex = regexp.MustCompile(`GPU (?:HW )?active residency:\s+([0-9.]+)%`)
+
+	// Backlight pattern
+	backlightRegex = regexp.MustCompile(`Backlight level:\s+([0-9]+)`)
 )
 
 // Parser maintains a persistent state machine for parsing powermetrics output
@@ -83,6 +89,13 @@ func (p *Parser) ParseOutput(output string) {
 	p.state.Mu.Lock()
 	defer p.state.Mu.Unlock()
 
+	// Initialize history if needed
+	if p.state.History == nil {
+		p.state.History = &models.HistoricalData{
+			MaxHistory: 30,
+		}
+	}
+
 	// Initialize maps if needed
 	if p.state.AllSeenCPUs == nil {
 		p.state.AllSeenCPUs = make(map[string]bool)
@@ -95,6 +108,33 @@ func (p *Parser) ParseOutput(output string) {
 	}
 	if p.state.PerCPUTimers == nil {
 		p.state.PerCPUTimers = make(map[string]float64)
+	}
+	if p.state.CoalitionCPUHistory == nil {
+		p.state.CoalitionCPUHistory = make(map[int][]float64)
+	}
+	if p.state.CoalitionMemHistory == nil {
+		p.state.CoalitionMemHistory = make(map[int][]float64)
+	}
+	if p.state.CoalitionNames == nil {
+		p.state.CoalitionNames = make(map[int]string)
+	}
+	if p.state.ProcessCPUHistory == nil {
+		p.state.ProcessCPUHistory = make(map[int][]float64)
+	}
+	if p.state.ProcessMemHistory == nil {
+		p.state.ProcessMemHistory = make(map[int][]float64)
+	}
+	if p.state.ECoreFreqHistory == nil {
+		p.state.ECoreFreqHistory = make(map[int][]float64)
+	}
+	if p.state.PCoreFreqHistory == nil {
+		p.state.PCoreFreqHistory = make(map[int][]float64)
+	}
+	if p.state.AllCpuFreq == nil {
+		p.state.AllCpuFreq = make(map[int]int)
+	}
+	if p.state.PerCPUInterruptHistory == nil {
+		p.state.PerCPUInterruptHistory = make(map[string][]float64)
 	}
 
 	// Process each line through the persistent state machine
@@ -157,6 +197,9 @@ func (p *Parser) ParseOutput(output string) {
 	p.state.History.DiskWriteHistory = models.AddToHistory(p.state.History.DiskWriteHistory, p.state.DiskWrite, p.state.History.MaxHistory)
 	p.state.History.BatteryHistory = models.AddToHistory(p.state.History.BatteryHistory, p.state.BatteryCharge, p.state.History.MaxHistory)
 	p.state.History.MemoryHistory = models.AddToHistory(p.state.History.MemoryHistory, p.state.MemoryUsed, p.state.History.MaxHistory)
+
+	// Update GPU frequency history
+	p.state.GPUFreqHistory = models.AddToHistory(p.state.GPUFreqHistory, float64(p.state.GPUFreq), 30)
 
 	// Update average temperature
 	if len(p.state.Temperature) > 0 {

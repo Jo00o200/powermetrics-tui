@@ -20,14 +20,40 @@ func (h *InSampleHandler) ProcessLine(ctx *ParserContext, line string) ParserSta
 
 	// Check for new sample (transition back to waiting)
 
-	// Check for specific sections
-	if IsRunningTasks(line) {
-		return StateRunningTasks
-	}
-
+	// Check for specific sections by their headers
 	if IsSection(line) {
-		// For other sections, stay in general sample state
-		// Individual parsers will be triggered by regex matches
+		// Route to appropriate section handlers based on section name
+		if strings.Contains(line, "Processor usage") {
+			return StateProcessorUsage
+		}
+		if strings.Contains(line, "Running tasks") {
+			return StateRunningTasks
+		}
+		if strings.Contains(line, "Interrupt distribution") {
+			return StateCPUInterrupts
+		}
+		if strings.Contains(line, "Network activity") {
+			return StateNetworkIO
+		}
+		if strings.Contains(line, "Disk activity") {
+			return StateDiskIO
+		}
+		if strings.Contains(line, "Thermal pressure") {
+			return StateThermalData
+		}
+		if strings.Contains(line, "Battery and backlight") {
+			// Battery will be handled in this same state
+			return StateInSample
+		}
+		if strings.Contains(line, "GPU usage") {
+			// GPU usage section - could create a handler if needed
+			return StateInSample
+		}
+		if strings.Contains(line, "Selective Forced Idle") {
+			// SFI section - not currently needed
+			return StateInSample
+		}
+		// Unknown section, stay in sample state
 		return StateInSample
 	}
 
@@ -42,48 +68,6 @@ func (h *InSampleHandler) ProcessLine(ctx *ParserContext, line string) ParserSta
 		return StateCPUInterrupts
 	}
 
-	// Check for power metrics
-	if cpuPowerRegex.MatchString(line) || gpuPowerRegex.MatchString(line) ||
-	   anePowerRegex.MatchString(line) || dramPowerRegex.MatchString(line) ||
-	   systemPowerRegex.MatchString(line) {
-		// Parse power metrics inline
-		if matches := cpuPowerRegex.FindStringSubmatch(line); matches != nil {
-			if val, err := ParseFloat(matches[1]); err == nil {
-				ctx.MetricsState.CPUPower = val
-			}
-		}
-		if matches := gpuPowerRegex.FindStringSubmatch(line); matches != nil {
-			if val, err := ParseFloat(matches[1]); err == nil {
-				ctx.MetricsState.GPUPower = val
-			}
-		}
-		if matches := anePowerRegex.FindStringSubmatch(line); matches != nil {
-			if val, err := ParseFloat(matches[1]); err == nil {
-				ctx.MetricsState.ANEPower = val
-			}
-		}
-		if matches := dramPowerRegex.FindStringSubmatch(line); matches != nil {
-			if val, err := ParseFloat(matches[1]); err == nil {
-				ctx.MetricsState.DRAMPower = val
-			}
-		}
-		if matches := systemPowerRegex.FindStringSubmatch(line); matches != nil {
-			if val, err := ParseFloat(matches[1]); err == nil {
-				// Convert watts to milliwatts if needed
-				if strings.Contains(line, "Watts") {
-					val *= 1000
-				}
-				ctx.MetricsState.SystemPower = val
-			}
-		}
-		return StatePowerMetrics
-	}
-
-	// Check for frequency data
-	if ecoreFreqRegex.MatchString(line) || pcoreFreqRegex.MatchString(line) ||
-	   gpuFreqRegex.MatchString(line) || cpuFreqRegex.MatchString(line) {
-		return StateFrequencies
-	}
 
 	// Check for network I/O
 	if networkInRegex.MatchString(line) || networkOutRegex.MatchString(line) {

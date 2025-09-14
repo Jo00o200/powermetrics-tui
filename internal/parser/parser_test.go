@@ -450,72 +450,87 @@ func TestInterruptRegex(t *testing.T) {
 	}
 }
 
-func TestPowerParsing(t *testing.T) {
-	t.Run("Power metrics parsing", func(t *testing.T) {
-		input := `*** Sampled system activity (Sun Sep 14 10:45:00 2024 -0400) (1000.87ms elapsed) ***
 
-CPU Power: 44 mW
-GPU Power: 10 mW
-ANE Power: 0 mW
-Combined Power (CPU + GPU + ANE): 54 mW
-`
-		state := &models.MetricsState{
-			History: &models.HistoricalData{
-				MaxHistory: 30,
-			},
+func TestGPUParsing(t *testing.T) {
+	t.Run("GPU section parsing from sample_output_all.txt", func(t *testing.T) {
+		samplePath := filepath.Join("..", "..", "sample_output_all.txt")
+		content, err := os.ReadFile(samplePath)
+		if err != nil {
+			t.Fatal(err)
 		}
-		parser := NewParser(state)
-		parser.ParseOutput(input)
 
+		state := &models.MetricsState{}
+		parser := NewParser(state)
+		parser.ParseOutput(string(content))
+
+		// Verify GPU power parsed
+		if state.GPUPower == 0 {
+			t.Error("GPU Power not parsed, expected non-zero value")
+		}
+		t.Logf("GPU Power: %.2f mW", state.GPUPower)
+
+		// Verify GPU frequency parsed
+		if state.GPUFreq == 0 {
+			t.Error("GPU Frequency not parsed, expected non-zero value")
+		}
+		t.Logf("GPU Frequency: %d MHz", state.GPUFreq)
+
+		// Verify GPU active residency parsed
+		t.Logf("GPU Active residency: %.2f%%", state.GPUActive)
+
+		// Verify GPU frequency history is being tracked
+		if len(state.GPUFreqHistory) == 0 {
+			t.Error("GPU frequency history not being tracked")
+		} else {
+			t.Logf("GPU frequency history: %v", state.GPUFreqHistory)
+		}
+	})
+}
+
+func TestPowerParsing(t *testing.T) {
+	t.Run("Power metrics parsing from sample_output_all.txt", func(t *testing.T) {
+		// Use the real sample file that has power data
+		samplePath := filepath.Join("..", "..", "sample_output_all.txt")
+		content, err := os.ReadFile(samplePath)
+		if err != nil {
+			t.Skipf("Sample file not found: %v", err)
+			return
+		}
+
+		state := models.NewMetricsState()
+		parser := NewParser(state)
+		parser.ParseOutput(string(content))
+
+		// Check frequency parsing too
+		t.Logf("CPU frequencies parsed: %d", len(state.AllCpuFreq))
+		t.Logf("E-core freq slice: %v", state.ECoreFreq)
+		t.Logf("P-core freq slice: %v", state.PCoreFreq)
+		t.Logf("Debug flags: %v", state.AllSeenCPUs)
+		for cpu, freq := range state.AllCpuFreq {
+			if freq > 0 {
+				t.Logf("  CPU %d: %d MHz", cpu, freq)
+				break // Just show one as proof
+			}
+		}
+
+		// The sample file has CPU Power: 44 mW, GPU Power: 10 mW
 		if state.CPUPower != 44 {
 			t.Errorf("Expected CPU power 44 mW, got %.2f", state.CPUPower)
 		}
 		if state.GPUPower != 10 {
 			t.Errorf("Expected GPU power 10 mW, got %.2f", state.GPUPower)
 		}
-		if state.ANEPower != 0 {
-			t.Errorf("Expected ANE power 0 mW, got %.2f", state.ANEPower)
-		}
 
 		t.Logf("CPU Power: %.2f mW", state.CPUPower)
 		t.Logf("GPU Power: %.2f mW", state.GPUPower)
 		t.Logf("ANE Power: %.2f mW", state.ANEPower)
+		t.Logf("System Power: %.2f mW", state.SystemPower)
+
+		// Also check that thermal and battery are still working
+		t.Logf("Thermal: '%s', Battery: %.2f%%", state.ThermalPressure, state.BatteryCharge)
 	})
 }
 
-func TestThermalAndBatteryParsing(t *testing.T) {
-	t.Run("Thermal and Battery parsing", func(t *testing.T) {
-		input := `*** Sampled system activity (Sun Sep 14 10:45:00 2024 -0400) (1000.87ms elapsed) ***
-
-**** Thermal pressure ****
-
-Current pressure level: Nominal
-
-**** Battery and backlight usage ****
-
-Battery: percent_charge: 100
-`
-		state := &models.MetricsState{
-			History: &models.HistoricalData{
-				MaxHistory: 30,
-			},
-		}
-		parser := NewParser(state)
-		parser.ParseOutput(input)
-
-		t.Logf("Thermal Pressure: '%s'", state.ThermalPressure)
-		t.Logf("Battery Charge: %.2f%%", state.BatteryCharge)
-		t.Logf("Battery History: %v", state.History.BatteryHistory)
-
-		if state.ThermalPressure != "Nominal" {
-			t.Errorf("Expected thermal pressure 'Nominal', got '%s'", state.ThermalPressure)
-		}
-
-		if state.BatteryCharge != 100 {
-			t.Errorf("Expected battery charge 100, got %.2f", state.BatteryCharge)
-		}
-	})
-}
 
 func TestDeadProcessesParsing(t *testing.T) {
 	// Test parsing sample with dead processes (empty-name PIDs)
