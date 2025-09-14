@@ -63,9 +63,10 @@ DRAM:     1.8W  ███░░░░░░░░░░░░░  10%   Fan: 420
 ### 📊 Comprehensive Monitoring
 - **Per-CPU Interrupt Breakdown**: See IPI, Timer, and Total interrupts for each individual CPU core with historical sparklines
 - **Dynamic CPU Frequency Scaling**: Real-time frequency monitoring for each E-core and P-core with auto-scaling graphs
+- **GPU Frequency Monitoring**: Persistent GPU frequency display with history sparkline (shows idle state)
 - **Power Analytics**: Monitor CPU, GPU, ANE (Neural Engine), and DRAM power consumption in real-time
 - **Thermal Management**: View temperature sensors and thermal pressure states (Nominal, Fair, Serious, Critical)
-- **Battery Intelligence**: Track charge levels, power draw, and battery health with usage history
+- **Battery Intelligence**: Track charge levels with fixed-range sparkline (0-100%) for accurate visualization
 - **Process Insights**:
   - Top processes by CPU usage with individual sparklines showing historical trends
   - **Recently Exited Processes**: Track processes that have terminated in the last 5 minutes
