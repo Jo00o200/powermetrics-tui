@@ -450,6 +450,39 @@ func TestInterruptRegex(t *testing.T) {
 	}
 }
 
+func TestThermalAndBatteryParsing(t *testing.T) {
+	t.Run("Thermal and Battery parsing", func(t *testing.T) {
+		input := `*** Sampled system activity (Sun Sep 14 10:45:00 2024 -0400) (1000.87ms elapsed) ***
+
+**** Thermal pressure ****
+
+Current pressure level: Nominal
+
+**** Battery and backlight usage ****
+
+Battery: percent_charge: 100
+`
+		state := &models.MetricsState{
+			History: &models.HistoricalData{
+				MaxHistory: 30,
+			},
+		}
+		parser := NewParser(state)
+		parser.ParseOutput(input)
+
+		t.Logf("Thermal Pressure: '%s'", state.ThermalPressure)
+		t.Logf("Battery Charge: %.2f%%", state.BatteryCharge)
+
+		if state.ThermalPressure != "Nominal" {
+			t.Errorf("Expected thermal pressure 'Nominal', got '%s'", state.ThermalPressure)
+		}
+
+		if state.BatteryCharge != 100 {
+			t.Errorf("Expected battery charge 100, got %.2f", state.BatteryCharge)
+		}
+	})
+}
+
 func TestDeadProcessesParsing(t *testing.T) {
 	// Test parsing sample with dead processes (empty-name PIDs)
 	samplePath := filepath.Join("..", "..", "sample_output_dead_processes.txt")

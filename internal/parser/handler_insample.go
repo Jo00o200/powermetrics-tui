@@ -72,7 +72,33 @@ func (h *InSampleHandler) ProcessLine(ctx *ParserContext, line string) ParserSta
 
 	// Check for thermal data
 	if thermalRegex.MatchString(line) || tempRegex.MatchString(line) {
+		// Parse thermal inline
+		if matches := thermalRegex.FindStringSubmatch(line); matches != nil {
+			ctx.MetricsState.ThermalPressure = matches[1]
+		}
+		if matches := tempRegex.FindStringSubmatch(line); matches != nil {
+			sensorName := strings.TrimSpace(matches[1])
+			if temp, err := ParseFloat(matches[2]); err == nil {
+				if ctx.MetricsState.Temperature == nil {
+					ctx.MetricsState.Temperature = make(map[string]float64)
+				}
+				ctx.MetricsState.Temperature[sensorName] = temp
+			}
+		}
 		return StateThermalData
+	}
+
+	// Check for battery data
+	if batteryRegex.MatchString(line) || batteryStateRegex.MatchString(line) {
+		// Parse battery inline since it's simple
+		if matches := batteryRegex.FindStringSubmatch(line); matches != nil {
+			if charge, err := ParseFloat(matches[1]); err == nil {
+				ctx.MetricsState.BatteryCharge = charge
+			}
+		}
+		if matches := batteryStateRegex.FindStringSubmatch(line); matches != nil {
+			ctx.MetricsState.BatteryState = matches[1]
+		}
 	}
 
 	// Track cluster headers for frequency parsing context
