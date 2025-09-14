@@ -38,7 +38,8 @@ func DrawSparkline(screen tcell.Screen, x, y, width int, data []float64, color t
 	}
 
 	// Unicode block characters for sparkline
-	ticks := []rune{' ', '▁', '▂', '▃', '▄', '▅', '▆', '▇', '█'}
+	// Use '▁' (U+2581) as baseline for zero, then increase from there
+	ticks := []rune{'▁', '▂', '▃', '▄', '▅', '▆', '▇', '█', '█'}
 
 	// Find min and max values
 	min, max := data[0], data[0]
@@ -53,12 +54,20 @@ func DrawSparkline(screen tcell.Screen, x, y, width int, data []float64, color t
 
 	// Handle case where all values are the same
 	if max == min {
+		if max == 0 {
+			// All zeros - show baseline block
+			for i := 0; i < width && i < len(data); i++ {
+				screen.SetContent(x+i, y, '▁', nil, tcell.StyleDefault.Foreground(color))
+			}
+			return
+		}
 		max = min + 1
 	}
 
 	// Convert values to tick levels
 	levels := make([]int, 0, len(data))
 	for _, v := range data {
+		// Scale all values from 0-8, with 0 showing as ▁ (baseline)
 		level := int(((v - min) / (max - min)) * 8)
 		if level < 0 {
 			level = 0
@@ -89,12 +98,13 @@ func DrawCPUSparkline(screen tcell.Screen, x, y, width int, data []float64, colo
 	}
 
 	// Unicode block characters for sparkline
-	ticks := []rune{' ', '▁', '▂', '▃', '▄', '▅', '▆', '▇', '█'}
+	// Use '▁' (U+2581) as baseline for zero, then increase from there
+	ticks := []rune{'▁', '▂', '▃', '▄', '▅', '▆', '▇', '█', '█'}
 
 	// Convert CPU percentages (0-100) to tick levels
 	levels := make([]int, 0, len(data))
 	for _, v := range data {
-		// Use absolute 0-100% scale
+		// Use absolute 0-100% scale, with 0% showing as ▁ (baseline)
 		level := int(v / 100.0 * 8)
 		if level < 0 {
 			level = 0

@@ -2,6 +2,7 @@ package ui
 
 import (
 	"fmt"
+	"os/exec"
 	"sort"
 	"strings"
 	"time"
@@ -501,9 +502,9 @@ func DrawProcessesViewWithStartY(screen tcell.Screen, state *models.MetricsState
 		DrawText(screen, 2, y, exitedTitle, tcell.StyleDefault.Bold(true).Foreground(tcell.ColorGray))
 		y++
 
-		// Header for exited processes
-		exitHeader := fmt.Sprintf("%-30s %12s %15s %-20s",
-			"Process", "Occurrences", "Last Seen", "PIDs")
+		// Header for exited processes with verification column
+		exitHeader := fmt.Sprintf("%-30s %12s %15s %-20s %8s",
+			"Process", "Occurrences", "Last Seen", "PIDs", "Verified")
 		DrawText(screen, 2, y, exitHeader, tcell.StyleDefault.Bold(true).Foreground(tcell.ColorGray))
 		y++
 
@@ -571,6 +572,20 @@ func DrawProcessesViewWithStartY(screen tcell.Screen, state *models.MetricsState
 				occurrencesStr = "1x"
 			}
 
+			// Check if all PIDs are actually dead
+			verificationStatus := "✓" // checkmark for all dead
+			verificationColor := tcell.ColorGreen
+
+			for _, pid := range proc.PIDs {
+				psCmd := exec.Command("ps", "-p", fmt.Sprintf("%d", pid), "-o", "pid=")
+				if err := psCmd.Run(); err == nil {
+					// Process is still alive!
+					verificationStatus = "✗" // X for some alive
+					verificationColor = tcell.ColorRed
+					break
+				}
+			}
+
 			line := fmt.Sprintf("%-30s %12s %15s %-20s",
 				processName, occurrencesStr, lastSeenStr, pidsStr)
 
@@ -581,6 +596,8 @@ func DrawProcessesViewWithStartY(screen tcell.Screen, state *models.MetricsState
 			}
 
 			DrawText(screen, 2, y, line, tcell.StyleDefault.Foreground(color))
+			// Draw verification status with appropriate color
+			DrawText(screen, 2+len(line)+1, y, verificationStatus, tcell.StyleDefault.Foreground(verificationColor))
 			y++
 		}
 	}

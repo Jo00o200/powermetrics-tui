@@ -440,3 +440,128 @@ func TestInterruptRegex(t *testing.T) {
 		})
 	}
 }
+
+func TestCompleteProcessClassification(t *testing.T) {
+	// Test that EVERY process in the sample is correctly classified as either coalition or subprocess
+	samplePath := filepath.Join("..", "..", "sample_output_all.txt")
+	content, err := os.ReadFile(samplePath)
+	if err != nil {
+		t.Skipf("Sample file not found at %s: %v", samplePath, err)
+	}
+
+	state := models.NewMetricsState()
+	ParsePowerMetricsOutput(string(content), state)
+
+	// Expected processes from the sample file (based on actual data)
+	expectedCoalitions := map[string]int{
+		"com.mitchellh.ghostty": 653,
+		"com.google.Chrome": 661,  // Updated to actual ID from sample
+		"kernel_coalition": 1,
+	}
+
+	expectedSubprocesses := map[int]string{
+		24620: "powermetrics",    // under ghostty
+		13198: "ghostty",        // under ghostty
+		5165:  "esbuild",        // under ghostty
+	}
+
+	t.Run("All expected coalitions found", func(t *testing.T) {
+		foundCoalitions := make(map[string]int)
+		for _, coalition := range state.Coalitions {
+			foundCoalitions[coalition.Name] = coalition.CoalitionID
+		}
+
+		for expectedName, expectedID := range expectedCoalitions {
+			if foundID, exists := foundCoalitions[expectedName]; !exists {
+				t.Errorf("Expected coalition %s (ID: %d) not found", expectedName, expectedID)
+			} else if foundID != expectedID {
+				t.Errorf("Coalition %s has wrong ID: expected %d, got %d", expectedName, expectedID, foundID)
+			}
+		}
+
+		t.Logf("Found %d coalitions total", len(state.Coalitions))
+		for name, id := range foundCoalitions {
+			t.Logf("Coalition: %s (ID: %d)", name, id)
+		}
+	})
+
+	t.Run("All expected subprocesses found", func(t *testing.T) {
+		foundSubprocesses := make(map[int]string)
+		for _, proc := range state.Processes {
+			foundSubprocesses[proc.PID] = proc.Name
+		}
+
+		for expectedPID, expectedName := range expectedSubprocesses {
+			if foundName, exists := foundSubprocesses[expectedPID]; !exists {
+				t.Errorf("Expected subprocess PID %d (%s) not found", expectedPID, expectedName)
+			} else {
+				t.Logf("Found subprocess PID %d: %s (Coalition: %s)", expectedPID, foundName, func() string {
+					for _, proc := range state.Processes {
+						if proc.PID == expectedPID {
+							return proc.CoalitionName
+						}
+					}
+					return "unknown"
+				}())
+			}
+		}
+
+		t.Logf("Found %d subprocesses total", len(state.Processes))
+	})
+
+	t.Run("Verify key PIDs are correctly classified", func(t *testing.T) {
+		// Test specific PIDs that are present in the sample file
+		testPIDs := []int{24620, 13198, 5165, 653}
+
+		for _, pid := range testPIDs {
+			// Check if it's a subprocess
+			foundAsSubprocess := false
+			for _, proc := range state.Processes {
+				if proc.PID == pid {
+					foundAsSubprocess = true
+					t.Logf("PID %d found as subprocess: %s (Coalition: %s)", pid, proc.Name, proc.CoalitionName)
+					break
+				}
+			}
+
+			// Check if it's a coalition
+			foundAsCoalition := false
+			for _, coalition := range state.Coalitions {
+				if coalition.CoalitionID == pid {
+					foundAsCoalition = true
+					t.Logf("PID %d found as coalition: %s", pid, coalition.Name)
+					break
+				}
+			}
+
+			if !foundAsSubprocess && !foundAsCoalition {
+				t.Errorf("PID %d not found as either subprocess or coalition!", pid)
+			} else if foundAsSubprocess && foundAsCoalition {
+				t.Errorf("PID %d found as BOTH subprocess and coalition - this is wrong!", pid)
+			}
+		}
+	})
+
+	t.Run("Verify hierarchy integrity", func(t *testing.T) {
+		// Every subprocess should belong to a coalition
+		for _, proc := range state.Processes {
+			found := false
+			for _, coalition := range state.Coalitions {
+				if coalition.Name == proc.CoalitionName {
+					// Check if this process is in the coalition's subprocess list
+					for _, subprocess := range coalition.Subprocesses {
+						if subprocess.PID == proc.PID {
+							found = true
+							break
+						}
+					}
+					break
+				}
+			}
+			if !found {
+				t.Errorf("Subprocess PID %d (%s) claims coalition %s but not found in any coalition's subprocess list",
+					proc.PID, proc.Name, proc.CoalitionName)
+			}
+		}
+	})
+}
