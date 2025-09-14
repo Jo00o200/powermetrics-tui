@@ -22,6 +22,7 @@ var (
 	currentView  ui.ViewType
 	metricsState *models.MetricsState
 	showHelp     bool = true // Show descriptions by default for casual users
+	showOnlyCoalitions bool = false // Show only parent processes (coalitions)
 )
 
 func main() {
@@ -98,6 +99,9 @@ func main() {
 				if ev.Rune() == 'h' || ev.Rune() == 'H' || ev.Rune() == '?' {
 					showHelp = !showHelp // Toggle help descriptions
 				}
+				if ev.Rune() == 'p' || ev.Rune() == 'P' {
+					showOnlyCoalitions = !showOnlyCoalitions // Toggle coalition-only view
+				}
 				// Number key shortcuts for quick view switching
 				if ev.Rune() >= '1' && ev.Rune() <= '9' {
 					currentView = ui.ViewType(ev.Rune() - '1')
@@ -165,34 +169,88 @@ func determineSamplers() string {
 }
 
 func runPowerMetrics(samplerList string) {
-	for {
-		args := []string{
-			"powermetrics",
-			"--samplers", samplerList,
-			"-i", fmt.Sprintf("%d", *interval),
-			"-n", "1",
+	// Run powermetrics continuously with infinite samples
+	args := []string{
+		"powermetrics",
+		"--samplers", samplerList,
+		"-i", fmt.Sprintf("%d", *interval),
+		// No -n flag means run indefinitely
+	}
+
+	// Always use --show-all to see all processes
+	args = append(args, "--show-all")
+
+	cmd := exec.Command("sudo", args...)
+
+	// Get stdout pipe
+	stdout, err := cmd.StdoutPipe()
+	if err != nil {
+		log.Fatalf("Error creating stdout pipe: %v", err)
+	}
+
+	// Start the command
+	if err := cmd.Start(); err != nil {
+		log.Fatalf("Error starting powermetrics: %v", err)
+	}
+
+	// Read output continuously
+	scanner := bufio.NewScanner(stdout)
+	// Increase buffer size for large outputs
+	buf := make([]byte, 0, 512*1024)
+	scanner.Buffer(buf, 512*1024)
+
+	var outputBuffer strings.Builder
+	inSample := false
+
+	for scanner.Scan() {
+		line := scanner.Text()
+
+		// Check if this is the start of a new sample
+		if strings.Contains(line, "*** Sampled system activity") {
+			if inSample && outputBuffer.Len() > 0 {
+				// Parse the previous complete sample
+				sampleContent := outputBuffer.String()
+				parser.ParsePowerMetricsOutput(sampleContent, metricsState)
+				metricsState.Mu.Lock()
+				metricsState.LastUpdate = time.Now()
+				metricsState.Mu.Unlock()
+			}
+			// Start new sample
+			outputBuffer.Reset()
+			inSample = true
 		}
 
-		// Always use --show-all to see all processes
-		args = append(args, "--show-all")
-
-		cmd := exec.Command("sudo", args...)
-		output, err := cmd.CombinedOutput()
-		if err != nil {
-			metricsState.Mu.Lock()
-			metricsState.UpdateErrors++
-			metricsState.Mu.Unlock()
-			time.Sleep(time.Duration(*interval) * time.Millisecond)
-			continue
+		if inSample {
+			outputBuffer.WriteString(line)
+			outputBuffer.WriteString("\n")
 		}
+	}
 
-		parser.ParsePowerMetricsOutput(string(output), metricsState)
+	// Parse any remaining sample when scanner exits
+	if inSample && outputBuffer.Len() > 0 {
+		sampleContent := outputBuffer.String()
+		parser.ParsePowerMetricsOutput(sampleContent, metricsState)
 		metricsState.Mu.Lock()
 		metricsState.LastUpdate = time.Now()
 		metricsState.Mu.Unlock()
-
-		time.Sleep(time.Duration(*interval) * time.Millisecond)
 	}
+
+	// If scanner stops, there was an error or process ended
+	if err := scanner.Err(); err != nil {
+		metricsState.Mu.Lock()
+		metricsState.UpdateErrors++
+		metricsState.Mu.Unlock()
+		log.Printf("Error reading powermetrics output: %v", err)
+	}
+
+	// Wait for command to finish
+	if err := cmd.Wait(); err != nil {
+		log.Printf("powermetrics process ended with error: %v", err)
+	}
+
+	// If we get here, powermetrics stopped - restart it
+	time.Sleep(1 * time.Second)
+	runPowerMetrics(samplerList)
 }
 
 func drawUI(screen tcell.Screen) {
@@ -211,7 +269,7 @@ func drawUI(screen tcell.Screen) {
 	case ui.ViewFrequency:
 		ui.DrawFrequencyViewWithStartY(screen, metricsState, width, height, startY)
 	case ui.ViewProcesses:
-		ui.DrawProcessesViewWithStartY(screen, metricsState, width, height, startY)
+		ui.DrawProcessesViewWithStartY(screen, metricsState, width, height, startY, showOnlyCoalitions)
 	case ui.ViewNetwork:
 		ui.DrawNetworkViewWithStartY(screen, metricsState, width, height, startY)
 	case ui.ViewDisk:
@@ -233,7 +291,12 @@ func drawUI(screen tcell.Screen) {
 }
 
 func drawFooter(screen tcell.Screen, width, height int) {
-	footer := " 1-9,0: Jump | Tab/←→: Navigate | H: Help | Q: Quit "
+	var footer string
+	if currentView == ui.ViewProcesses {
+		footer = " 1-9,0: Jump | Tab/←→: Navigate | H: Help | P: Parents | Q: Quit "
+	} else {
+		footer = " 1-9,0: Jump | Tab/←→: Navigate | H: Help | Q: Quit "
+	}
 
 	// Show current view name
 	viewNames := []string{
@@ -252,10 +315,16 @@ func drawFooter(screen tcell.Screen, width, height int) {
 			ui.DrawText(screen, leftOffset, height-1, "📖", tcell.StyleDefault)
 			leftOffset += 3
 		}
+
+		// Show coalition-only status in process view
+		if currentView == ui.ViewProcesses && showOnlyCoalitions {
+			ui.DrawText(screen, leftOffset, height-1, "▶", tcell.StyleDefault.Foreground(tcell.ColorTeal))
+			leftOffset += 2
+		}
 	}
 
 	// Show update interval
-	intervalText := fmt.Sprintf("↻ %dms", *interval)
+	intervalText := fmt.Sprintf("Interval: %dms", *interval)
 	ui.DrawText(screen, leftOffset, height-1, intervalText, tcell.StyleDefault.Foreground(tcell.ColorYellow))
 
 	// Draw controls on the right

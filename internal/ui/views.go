@@ -3,6 +3,7 @@ package ui
 import (
 	"fmt"
 	"sort"
+	"strings"
 	"time"
 
 	"github.com/gdamore/tcell/v2"
@@ -77,13 +78,13 @@ func DrawInterruptsViewWithHelp(screen tcell.Screen, state *models.MetricsState,
 	}
 
 	// Per-CPU breakdown if available
-	if len(state.PerCPUIPIs) > 0 {
+	if len(state.AllSeenCPUs) > 0 {
 		DrawText(screen, 2, y, "Per-CPU Breakdown:", tcell.StyleDefault.Bold(true))
 		y++
 
-		// Sort CPU keys for consistent display
+		// Use all CPUs ever seen for consistent display
 		var cpuKeys []string
-		for cpu := range state.PerCPUIPIs {
+		for cpu := range state.AllSeenCPUs {
 			cpuKeys = append(cpuKeys, cpu)
 		}
 		sort.Strings(cpuKeys)
@@ -94,6 +95,7 @@ func DrawInterruptsViewWithHelp(screen tcell.Screen, state *models.MetricsState,
 				break
 			}
 
+			// Get values, defaulting to 0 if not present in current sample
 			ipi := state.PerCPUIPIs[cpu]
 			timer := state.PerCPUTimers[cpu]
 			total := state.PerCPUInterrupts[cpu]
@@ -247,17 +249,29 @@ func DrawFrequencyViewWithStartY(screen tcell.Screen, state *models.MetricsState
 		DrawText(screen, 2, y, "E-Cores (Efficiency):", tcell.StyleDefault.Bold(true))
 		y++
 		for i, freq := range state.ECoreFreq {
-			if freq > 0 { // Only show active cores
-				label := fmt.Sprintf("E%d: %4d MHz", i, freq)
-				DrawText(screen, 4, y, label, tcell.StyleDefault)
-				DrawBar(screen, 25, y, width-30, float64(freq), maxECoreFreq, tcell.ColorBlue)
-				y++
+			// Show individual CPU cores (E-cores typically start from CPU 0)
+			label := fmt.Sprintf("E-Core %d: %4d MHz", i, freq)
 
-				// Draw sparkline for this core's frequency history with lighter color
-				if history, ok := state.ECoreFreqHistory[i]; ok && len(history) > 0 {
-					DrawSparkline(screen, 25, y, width-30, history, tcell.ColorDarkCyan)
-					y++
+			// Color based on activity
+			textColor := tcell.StyleDefault
+			barColor := tcell.ColorBlue
+			if freq == 0 {
+				textColor = tcell.StyleDefault.Foreground(tcell.ColorGray)
+				barColor = tcell.ColorDarkGray
+			}
+
+			DrawText(screen, 4, y, label, textColor)
+			DrawBar(screen, 25, y, width-30, float64(freq), maxECoreFreq, barColor)
+			y++
+
+			// Draw sparkline for this core's frequency history with lighter color
+			if history, ok := state.ECoreFreqHistory[i]; ok && len(history) > 0 {
+				sparkColor := tcell.ColorDarkCyan
+				if freq == 0 {
+					sparkColor = tcell.ColorDarkGray
 				}
+				DrawSparkline(screen, 25, y, width-30, history, sparkColor)
+				y++
 			}
 		}
 		y++
@@ -289,25 +303,36 @@ func DrawFrequencyViewWithStartY(screen tcell.Screen, state *models.MetricsState
 		DrawText(screen, 2, y, label, tcell.StyleDefault.Bold(true))
 		y++
 		for i, freq := range state.PCoreFreq {
-			if freq > 0 { // Only show active cores
-				coreLabel := fmt.Sprintf("P%d: %4d MHz", i, freq)
-				if isIntel {
-					coreLabel = fmt.Sprintf("Core %d: %4d MHz", i, freq)
-				}
-				DrawText(screen, 4, y, coreLabel, tcell.StyleDefault)
-				DrawBar(screen, 25, y, width-30, float64(freq), maxPCoreFreq, tcell.ColorRed)
-				y++
+			// Show individual CPU cores
+			coreLabel := fmt.Sprintf("P-Core %d: %4d MHz", i, freq)
+			if isIntel {
+				coreLabel = fmt.Sprintf("Core %d: %4d MHz", i, freq)
+			}
 
-				// Draw sparkline for this core's frequency history with lighter color
-				if history, ok := state.PCoreFreqHistory[i]; ok && len(history) > 0 {
-					// Use a lighter shade for sparklines
-					sparkColor := tcell.ColorIndianRed
-					if isIntel {
-						sparkColor = tcell.ColorOrangeRed
-					}
-					DrawSparkline(screen, 25, y, width-30, history, sparkColor)
-					y++
+			// Color based on activity
+			textColor := tcell.StyleDefault
+			barColor := tcell.ColorRed
+			if freq == 0 {
+				textColor = tcell.StyleDefault.Foreground(tcell.ColorGray)
+				barColor = tcell.ColorDarkGray
+			}
+
+			DrawText(screen, 4, y, coreLabel, textColor)
+			DrawBar(screen, 25, y, width-30, float64(freq), maxPCoreFreq, barColor)
+			y++
+
+			// Draw sparkline for this core's frequency history with lighter color
+			if history, ok := state.PCoreFreqHistory[i]; ok && len(history) > 0 {
+				// Use a lighter shade for sparklines
+				sparkColor := tcell.ColorIndianRed
+				if isIntel {
+					sparkColor = tcell.ColorOrangeRed
 				}
+				if freq == 0 {
+					sparkColor = tcell.ColorDarkGray
+				}
+				DrawSparkline(screen, 25, y, width-30, history, sparkColor)
+				y++
 			}
 		}
 		y++
@@ -336,13 +361,24 @@ func min(a, b int) int {
 }
 
 // DrawProcessesViewWithStartY draws the top processes view with custom start Y
-func DrawProcessesViewWithStartY(screen tcell.Screen, state *models.MetricsState, width, height int, startY int) {
+func DrawProcessesViewWithStartY(screen tcell.Screen, state *models.MetricsState, width, height int, startY int, showOnlyCoalitions bool) {
 	state.Mu.RLock()
 	defer state.Mu.RUnlock()
 
 	y := startY
 	// Show process counts in the title
-	title := fmt.Sprintf("TOP PROCESSES (%d active, %d exited)", len(state.Processes), len(state.RecentlyExited))
+	var title string
+	if showOnlyCoalitions {
+		coalitionCount := 0
+		for _, proc := range state.Processes {
+			if proc.Name == proc.CoalitionName {
+				coalitionCount++
+			}
+		}
+		title = fmt.Sprintf("TOP COALITIONS (%d parents, %d total)", coalitionCount, len(state.Processes))
+	} else {
+		title = fmt.Sprintf("TOP PROCESSES (%d active, %d exited)", len(state.Processes), len(state.RecentlyExited))
+	}
 	DrawText(screen, 2, y, title, tcell.StyleDefault.Bold(true).Foreground(tcell.ColorTeal))
 	y += 2
 
@@ -352,9 +388,31 @@ func DrawProcessesViewWithStartY(screen tcell.Screen, state *models.MetricsState
 	DrawText(screen, 2, y, header, tcell.StyleDefault.Bold(true))
 	y++
 
-	// Sort processes by CPU usage
-	processes := make([]models.ProcessInfo, len(state.Processes))
-	copy(processes, state.Processes)
+	// Filter and sort processes by CPU usage
+	var processes []models.ProcessInfo
+	if showOnlyCoalitions {
+		// Show only coalition parent processes - convert from ProcessCoalition to ProcessInfo format
+		for _, coalition := range state.Coalitions {
+			// Convert ProcessCoalition to ProcessInfo for consistent display
+			coalitionAsProcess := models.ProcessInfo{
+				PID:           coalition.CoalitionID,
+				Name:          coalition.Name,
+				CoalitionName: coalition.Name, // Coalition is its own parent
+				CPUPercent:    coalition.CPUPercent,
+				MemoryMB:      coalition.MemoryMB,
+				DiskMB:        coalition.DiskMB,
+				NetworkMB:     coalition.NetworkMB,
+				CPUHistory:    coalition.CPUHistory,
+				MemoryHistory: coalition.MemoryHistory,
+			}
+			processes = append(processes, coalitionAsProcess)
+		}
+	} else {
+		// Show all processes
+		processes = make([]models.ProcessInfo, len(state.Processes))
+		copy(processes, state.Processes)
+	}
+
 	sort.Slice(processes, func(i, j int) bool {
 		return processes[i].CPUPercent > processes[j].CPUPercent
 	})
@@ -370,25 +428,47 @@ func DrawProcessesViewWithStartY(screen tcell.Screen, state *models.MetricsState
 			break
 		}
 
+		// Check if this is a coalition parent process (process name matches coalition name)
+		isCoalition := proc.Name == proc.CoalitionName
+
 		// Truncate long process names
 		processName := proc.Name
-		if len(processName) > 27 {
-			processName = processName[:24] + "..."
+		if len(processName) > 28 {
+			processName = processName[:25] + "..."
 		}
 
-		// Format the line with exact same alignment as header
+		// Format the line with proper column alignment
 		line := fmt.Sprintf("%-8d %-28s %6.1f%% %10.1fMB %10.1fMB %10.1fMB",
 			proc.PID, processName, proc.CPUPercent, proc.MemoryMB, proc.DiskMB, proc.NetworkMB)
 
-		// Color based on CPU usage
-		color := tcell.ColorWhite
-		sparkColor := tcell.ColorTeal
-		if proc.CPUPercent > 50 {
-			color = tcell.ColorRed
-			sparkColor = tcell.ColorRed
-		} else if proc.CPUPercent > 25 {
-			color = tcell.ColorYellow
-			sparkColor = tcell.ColorYellow
+		// Color based on process type and CPU usage
+		var color tcell.Color
+		var sparkColor tcell.Color
+
+		if isCoalition {
+			// Coalition parent processes - use teal/cyan colors
+			if proc.CPUPercent > 50 {
+				color = tcell.ColorDarkRed
+				sparkColor = tcell.ColorDarkRed
+			} else if proc.CPUPercent > 25 {
+				color = tcell.ColorOrange
+				sparkColor = tcell.ColorOrange
+			} else {
+				color = tcell.ColorTeal
+				sparkColor = tcell.ColorTeal
+			}
+		} else {
+			// Subprocess - use standard colors
+			if proc.CPUPercent > 50 {
+				color = tcell.ColorRed
+				sparkColor = tcell.ColorRed
+			} else if proc.CPUPercent > 25 {
+				color = tcell.ColorYellow
+				sparkColor = tcell.ColorYellow
+			} else {
+				color = tcell.ColorWhite
+				sparkColor = tcell.ColorTeal
+			}
 		}
 
 		DrawText(screen, 2, y, line, tcell.StyleDefault.Foreground(color))
@@ -422,8 +502,8 @@ func DrawProcessesViewWithStartY(screen tcell.Screen, state *models.MetricsState
 		y++
 
 		// Header for exited processes
-		exitHeader := fmt.Sprintf("%-40s %12s %15s",
-			"Process", "Occurrences", "Last Seen")
+		exitHeader := fmt.Sprintf("%-30s %12s %15s %-20s",
+			"Process", "Occurrences", "Last Seen", "PIDs")
 		DrawText(screen, 2, y, exitHeader, tcell.StyleDefault.Bold(true).Foreground(tcell.ColorGray))
 		y++
 
@@ -433,10 +513,15 @@ func DrawProcessesViewWithStartY(screen tcell.Screen, state *models.MetricsState
 			displayCount = 10
 		}
 
-		// Sort by last exit time (most recent first)
+		// Sort by occurrences (highest first), then by last exit time
 		sortedExited := make([]models.ExitedProcessInfo, len(state.RecentlyExited))
 		copy(sortedExited, state.RecentlyExited)
 		sort.Slice(sortedExited, func(i, j int) bool {
+			// Primary sort: by occurrences (descending)
+			if sortedExited[i].Occurrences != sortedExited[j].Occurrences {
+				return sortedExited[i].Occurrences > sortedExited[j].Occurrences
+			}
+			// Secondary sort: by last exit time (most recent first)
 			return sortedExited[i].LastExitTime.After(sortedExited[j].LastExitTime)
 		})
 
@@ -445,8 +530,28 @@ func DrawProcessesViewWithStartY(screen tcell.Screen, state *models.MetricsState
 
 			// Truncate long process names
 			processName := proc.Name
-			if len(processName) > 39 {
-				processName = processName[:36] + "..."
+			if len(processName) > 29 {
+				processName = processName[:26] + "..."
+			}
+
+			// Format PIDs list (show up to 5 PIDs, then ...)
+			pidsStr := ""
+			if len(proc.PIDs) > 0 {
+				if len(proc.PIDs) <= 5 {
+					// Show all PIDs
+					pidStrings := make([]string, len(proc.PIDs))
+					for i, pid := range proc.PIDs {
+						pidStrings[i] = fmt.Sprintf("%d", pid)
+					}
+					pidsStr = strings.Join(pidStrings, ",")
+				} else {
+					// Show first 4 PIDs and count
+					pidStrings := make([]string, 4)
+					for i := 0; i < 4; i++ {
+						pidStrings[i] = fmt.Sprintf("%d", proc.PIDs[i])
+					}
+					pidsStr = strings.Join(pidStrings, ",") + fmt.Sprintf(",+%d", len(proc.PIDs)-4)
+				}
 			}
 
 			// Format last seen time
@@ -466,8 +571,8 @@ func DrawProcessesViewWithStartY(screen tcell.Screen, state *models.MetricsState
 				occurrencesStr = "1x"
 			}
 
-			line := fmt.Sprintf("%-40s %12s %15s",
-				processName, occurrencesStr, lastSeenStr)
+			line := fmt.Sprintf("%-30s %12s %15s %-20s",
+				processName, occurrencesStr, lastSeenStr, pidsStr)
 
 			// Use different shades of gray based on how recent
 			color := tcell.ColorGray

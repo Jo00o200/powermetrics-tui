@@ -74,22 +74,41 @@ func ParsePowerMetricsOutput(output string, state *models.MetricsState) {
 	ipiTotal := 0.0
 	timerTotal := 0.0
 	interrupts := 0.0
-	state.ECoreFreq = []int{}
-	state.PCoreFreq = []int{}
+	currentCluster := "" // Track which cluster we're currently parsing
 
-	// Create a new processes list, but preserve history
+	// Don't reset frequency arrays here - we'll rebuild them from individual CPU data
+
+	// Create new process and coalition lists, but preserve history
 	newProcesses := []models.ProcessInfo{}
+	newCoalitions := []models.ProcessCoalition{}
 
 	inProcessSection := false
+	currentCoalition := (*models.ProcessCoalition)(nil) // Track current coalition being parsed
 	currentCPU := ""  // Track which CPU we're parsing interrupts for
 
-	// Clear per-CPU maps
-	state.PerCPUInterrupts = make(map[string]float64)
-	state.PerCPUIPIs = make(map[string]float64)
-	state.PerCPUTimers = make(map[string]float64)
+	// Initialize maps if needed
+	if state.AllSeenCPUs == nil {
+		state.AllSeenCPUs = make(map[string]bool)
+	}
+	if state.PerCPUInterrupts == nil {
+		state.PerCPUInterrupts = make(map[string]float64)
+	}
+	if state.PerCPUIPIs == nil {
+		state.PerCPUIPIs = make(map[string]float64)
+	}
+	if state.PerCPUTimers == nil {
+		state.PerCPUTimers = make(map[string]float64)
+	}
 
-	for _, line := range lines {
-		line = strings.TrimSpace(line)
+	// Reset all known CPUs to 0 (don't remove them)
+	for cpu := range state.AllSeenCPUs {
+		state.PerCPUInterrupts[cpu] = 0
+		state.PerCPUIPIs[cpu] = 0
+		state.PerCPUTimers[cpu] = 0
+	}
+
+	for _, rawLine := range lines {
+		line := strings.TrimSpace(rawLine)
 
 		// Check for process section - new format "*** Running tasks ***"
 		if strings.Contains(line, "*** Running tasks ***") {
@@ -110,6 +129,8 @@ func ParsePowerMetricsOutput(output string, state *models.MetricsState) {
 		// Check for CPU interrupt header (e.g., "CPU 0:")
 		if matches := cpuInterruptRegex.FindStringSubmatch(line); matches != nil {
 			currentCPU = "CPU" + matches[1]
+			// Mark this CPU as seen
+			state.AllSeenCPUs[currentCPU] = true
 			continue
 		}
 
@@ -120,6 +141,7 @@ func ParsePowerMetricsOutput(output string, state *models.MetricsState) {
 				// If we have a current CPU, track per-CPU data
 				if currentCPU != "" {
 					state.PerCPUIPIs[currentCPU] = val
+					state.AllSeenCPUs[currentCPU] = true
 				}
 			}
 		}
@@ -130,6 +152,7 @@ func ParsePowerMetricsOutput(output string, state *models.MetricsState) {
 				// If we have a current CPU, track per-CPU data
 				if currentCPU != "" {
 					state.PerCPUTimers[currentCPU] = val
+					state.AllSeenCPUs[currentCPU] = true
 				}
 			}
 		}
@@ -140,6 +163,7 @@ func ParsePowerMetricsOutput(output string, state *models.MetricsState) {
 				// If we have a current CPU, track per-CPU data
 				if currentCPU != "" {
 					state.PerCPUInterrupts[currentCPU] = val
+					state.AllSeenCPUs[currentCPU] = true
 				}
 			}
 		}
@@ -198,33 +222,36 @@ func ParsePowerMetricsOutput(output string, state *models.MetricsState) {
 			}
 		}
 
-		// Parse cluster frequencies - these tell us the architecture
-		if matches := ecoreFreqRegex.FindStringSubmatch(line); matches != nil {
-			if val, err := strconv.Atoi(matches[1]); err == nil {
-				// This is an Apple Silicon Mac with E-cores
-				if len(state.ECoreFreq) == 0 {
-					state.ECoreFreq = []int{val}
-				}
-			}
+		// Track cluster headers to determine CPU membership
+		if strings.Contains(line, "E-Cluster Online:") {
+			currentCluster = "E"
+		} else if strings.Contains(line, "P0-Cluster Online:") || strings.Contains(line, "P1-Cluster Online:") {
+			currentCluster = "P"
+		} else if strings.Contains(line, "P-Cluster Online:") { // Some systems might just have "P-Cluster"
+			currentCluster = "P"
 		}
 
-		if matches := pcoreFreqRegex.FindStringSubmatch(line); matches != nil {
-			if val, err := strconv.Atoi(matches[1]); err == nil {
-				// This is an Apple Silicon Mac with P-cores
-				state.PCoreFreq = append(state.PCoreFreq, val)
-			}
-		}
-
-		// Parse individual CPU frequencies
+		// Parse individual CPU frequencies and store with cluster context
 		if matches := cpuFreqRegex.FindStringSubmatch(line); matches != nil {
 			if cpuNum, err := strconv.Atoi(matches[1]); err == nil {
-				if freq, err := strconv.Atoi(matches[2]); err == nil && freq > 0 {
-					// Store all CPU frequencies in a temporary map first
-					// We'll organize them based on what clusters we detected
+				if freq, err := strconv.Atoi(matches[2]); err == nil {
+					// Store individual CPU frequency in temporary map
 					if state.AllCpuFreq == nil {
 						state.AllCpuFreq = make(map[int]int)
 					}
 					state.AllCpuFreq[cpuNum] = freq
+
+					// Store cluster membership info in a more structured way
+					// We'll use this in organizeCPUFrequencies
+					if currentCluster != "" {
+						// Mark which cluster this CPU belongs to
+						if state.AllSeenCPUs == nil {
+							state.AllSeenCPUs = make(map[string]bool)
+						}
+						// Store cluster membership
+						clusterKey := fmt.Sprintf("%s-CPU%d", currentCluster, cpuNum)
+						state.AllSeenCPUs[clusterKey] = true
+					}
 				}
 			}
 		}
@@ -303,113 +330,161 @@ func ParsePowerMetricsOutput(output string, state *models.MetricsState) {
 			}
 		}
 
-		// Parse processes from "Running tasks" section
-		// Format: Name(padded) ID CPU_ms/s User% ...
+		// Parse processes from "Running tasks" section with coalition/subprocess hierarchy
 		if inProcessSection {
-			if matches := processRegex.FindStringSubmatch(line); matches != nil {
-				// matches[1] = Name (with spaces)
-				// matches[2] = ID (PID)
-				// matches[3] = CPU ms/s
-				// matches[4] = User%
+			// Skip empty lines and handle ALL_TASKS summary
+			if line == "" {
+				continue
+			}
+			if strings.HasPrefix(line, "ALL_TASKS") {
+				// Save the current coalition before ending
+				if currentCoalition != nil {
+					newCoalitions = append(newCoalitions, *currentCoalition)
+					currentCoalition = nil
+				}
+				continue
+			}
 
+			if matches := processRegex.FindStringSubmatch(rawLine); matches != nil {
 				name := strings.TrimSpace(matches[1])
-				pid, _ := strconv.Atoi(matches[2])
+				id, _ := strconv.Atoi(matches[2])
 				cpuMs, _ := strconv.ParseFloat(matches[3], 64)
 				userPercent, _ := strconv.ParseFloat(matches[4], 64)
 
 				// Convert CPU ms/s to percentage (approximate)
-				// 1000 ms/s = 100% of one core
 				cpuPercent := cpuMs / 10.0
 
-				// Update process history
-				if state.ProcessCPUHistory[pid] == nil {
-					state.ProcessCPUHistory[pid] = make([]float64, 0, 10)
-				}
-				state.ProcessCPUHistory[pid] = models.AddToHistory(state.ProcessCPUHistory[pid], cpuPercent, 10)
+				// Check indentation using rawLine to determine hierarchy
+				// Subprocess: starts with whitespace (spaces or tabs)
+				// Coalition: no leading whitespace
+				isSubprocess := strings.HasPrefix(rawLine, " ") || strings.HasPrefix(rawLine, "\t")
+				if isSubprocess {
+					// This is a subprocess (indented with spaces or tabs)
+					if currentCoalition == nil {
+						continue // Skip orphaned subprocess
+					}
 
-				if state.ProcessMemHistory[pid] == nil {
-					state.ProcessMemHistory[pid] = make([]float64, 0, 10)
-				}
-				state.ProcessMemHistory[pid] = models.AddToHistory(state.ProcessMemHistory[pid], userPercent, 10)
+					// Update process history
+					if state.ProcessCPUHistory[id] == nil {
+						state.ProcessCPUHistory[id] = make([]float64, 0, 10)
+					}
+					state.ProcessCPUHistory[id] = models.AddToHistory(state.ProcessCPUHistory[id], cpuPercent, 10)
 
-				newProcesses = append(newProcesses, models.ProcessInfo{
-					PID:           pid,
-					Name:          name,
-					CPUPercent:    cpuPercent,
-					MemoryMB:      userPercent, // Using User% as a proxy for now
-					DiskMB:        0,
-					NetworkMB:     0,
-					CPUHistory:    state.ProcessCPUHistory[pid],
-					MemoryHistory: state.ProcessMemHistory[pid],
-				})
+					if state.ProcessMemHistory[id] == nil {
+						state.ProcessMemHistory[id] = make([]float64, 0, 10)
+					}
+					state.ProcessMemHistory[id] = models.AddToHistory(state.ProcessMemHistory[id], userPercent, 10)
+
+					// Create subprocess and add to current coalition
+					subprocess := models.ProcessInfo{
+						PID:           id,
+						Name:          name,
+						CoalitionName: currentCoalition.Name,
+						CPUPercent:    cpuPercent,
+						MemoryMB:      userPercent,
+						DiskMB:        0,
+						NetworkMB:     0,
+						CPUHistory:    state.ProcessCPUHistory[id],
+						MemoryHistory: state.ProcessMemHistory[id],
+					}
+					currentCoalition.Subprocesses = append(currentCoalition.Subprocesses, subprocess)
+					newProcesses = append(newProcesses, subprocess)
+
+				} else {
+					// This is a coalition (no leading whitespace)
+					// Save previous coalition if it exists
+					if currentCoalition != nil {
+						newCoalitions = append(newCoalitions, *currentCoalition)
+					}
+
+					// Update coalition history
+					if state.CoalitionCPUHistory[id] == nil {
+						state.CoalitionCPUHistory[id] = make([]float64, 0, 10)
+					}
+					state.CoalitionCPUHistory[id] = models.AddToHistory(state.CoalitionCPUHistory[id], cpuPercent, 10)
+
+					if state.CoalitionMemHistory[id] == nil {
+						state.CoalitionMemHistory[id] = make([]float64, 0, 10)
+					}
+					state.CoalitionMemHistory[id] = models.AddToHistory(state.CoalitionMemHistory[id], userPercent, 10)
+
+					// Create new coalition
+					currentCoalition = &models.ProcessCoalition{
+						CoalitionID:   id,
+						Name:          name,
+						CPUPercent:    cpuPercent,
+						MemoryMB:      userPercent,
+						DiskMB:        0,
+						NetworkMB:     0,
+						Subprocesses:  make([]models.ProcessInfo, 0),
+						CPUHistory:    state.CoalitionCPUHistory[id],
+						MemoryHistory: state.CoalitionMemHistory[id],
+					}
+				}
 			}
 		}
 	}
 
-	// Track recently exited processes
-	// With --show-all, we see ALL processes, so absence means true exit
-	currentTime := time.Now()
-	currentPIDs := make(map[int]bool)
-	for _, proc := range newProcesses {
-		currentPIDs[proc.PID] = true
-		// Update last seen time and name for current processes
-		state.LastSeenPIDs[proc.PID] = currentTime
-		state.ProcessNames[proc.PID] = proc.Name
+	// Save final coalition if it exists
+	if currentCoalition != nil {
+		newCoalitions = append(newCoalitions, *currentCoalition)
 	}
 
-	// Check for newly exited processes
-	for pid, lastSeen := range state.LastSeenPIDs {
+	// Track recently exited processes - only track actual subprocesses, not coalitions
+	currentTime := time.Now()
+	currentPIDs := make(map[int]bool)
+	currentCoalitionIDs := make(map[int]bool)
+
+	// Collect all current PIDs (only subprocesses) and coalition IDs
+	for _, proc := range newProcesses {
+		currentPIDs[proc.PID] = true
+	}
+	for _, coalition := range newCoalitions {
+		currentCoalitionIDs[coalition.CoalitionID] = true
+	}
+
+	// Check for processes that are no longer present
+	// IMPORTANT: Only track SUBPROCESS PIDs as exited, not coalition IDs
+	for pid := range state.LastSeenPIDs {
 		if !currentPIDs[pid] {
-			// Process has truly exited (not in the full list)
+			// Double-check this isn't actually a coalition ID that moved
+			if currentCoalitionIDs[pid] {
+				// This PID is now a coalition ID, clean up old tracking
+				delete(state.LastSeenPIDs, pid)
+				continue
+			}
+
 			processName := state.ProcessNames[pid]
+			if processName == "" {
+				processName = fmt.Sprintf("<unnamed-%d>", pid)
+			}
 
-			// Only track non-system processes with meaningful names
-			if processName != "" && processName != fmt.Sprintf("PID-%d", pid) &&
-				!strings.Contains(processName, "kernel_task") &&
-				!strings.Contains(processName, "WindowServer") &&
-				!strings.Contains(processName, "loginwindow") &&
-				!strings.Contains(processName, "launchd") &&
-				!strings.Contains(processName, "distnoted") {
-
-				// Only track if it had some CPU activity (was a real workload)
-				cpuHistory := state.ProcessCPUHistory[pid]
-				hadActivity := false
-				if len(cpuHistory) > 0 {
-					for _, cpu := range cpuHistory {
-						if cpu > 1.0 { // At least 1% CPU at some point
-							hadActivity = true
-							break
-						}
-					}
-				}
-
-				if hadActivity {
-					// Check if we already have this process in the exited list
-					found := false
-					for i := range state.RecentlyExited {
-						if state.RecentlyExited[i].Name == processName {
-							// Update existing entry
-							state.RecentlyExited[i].Occurrences++
-							state.RecentlyExited[i].LastExitTime = currentTime
-							found = true
-							break
-						}
-					}
-
-					if !found {
-						// Add new entry
-						exitedProc := models.ExitedProcessInfo{
-							Name:          processName,
-							Occurrences:   1,
-							LastExitTime:  currentTime,
-							FirstSeenTime: lastSeen,
-						}
-						state.RecentlyExited = append(state.RecentlyExited, exitedProc)
-					}
+			// Track exited subprocess
+			found := false
+			for i := range state.RecentlyExited {
+				if state.RecentlyExited[i].Name == processName {
+					state.RecentlyExited[i].PIDs = append(state.RecentlyExited[i].PIDs, pid)
+					state.RecentlyExited[i].Occurrences++
+					state.RecentlyExited[i].LastExitTime = currentTime
+					found = true
+					break
 				}
 			}
 
-			// Clean up old entries from tracking maps
+			if !found {
+				if lastSeen, exists := state.LastSeenPIDs[pid]; exists {
+					exitedProc := models.ExitedProcessInfo{
+						Name:          processName,
+						PIDs:          []int{pid},
+						Occurrences:   1,
+						LastExitTime:  currentTime,
+						FirstSeenTime: lastSeen,
+					}
+					state.RecentlyExited = append(state.RecentlyExited, exitedProc)
+				}
+			}
+
+			// Clean up tracking maps
 			delete(state.LastSeenPIDs, pid)
 			delete(state.ProcessCPUHistory, pid)
 			delete(state.ProcessMemHistory, pid)
@@ -426,26 +501,27 @@ func ParsePowerMetricsOutput(output string, state *models.MetricsState) {
 	}
 	state.RecentlyExited = cleanedExited
 
-	// Update the processes list with the new data
+	// Update tracking maps with current processes and coalitions (after exit detection)
+	for _, proc := range newProcesses {
+		// Only track subprocess PIDs, not coalition IDs
+		state.LastSeenPIDs[proc.PID] = currentTime
+		state.ProcessNames[proc.PID] = proc.Name
+	}
+
+	// Update coalition names (but don't track them as processes for exit detection)
+	for _, coalition := range newCoalitions {
+		// Track coalition names for reference, but not in LastSeenPIDs
+		state.ProcessNames[coalition.CoalitionID] = coalition.Name
+	}
+
+	// Update the processes and coalitions lists with the new data
 	state.Processes = newProcesses
+	state.Coalitions = newCoalitions
 
 	// Organize CPU frequencies based on what we detected
 	organizeCPUFrequencies(state)
 
-	// Update CPU frequency history for sparklines
-	for i, freq := range state.ECoreFreq {
-		if state.ECoreFreqHistory[i] == nil {
-			state.ECoreFreqHistory[i] = make([]float64, 0, 30)
-		}
-		state.ECoreFreqHistory[i] = models.AddToHistory(state.ECoreFreqHistory[i], float64(freq), 30)
-	}
-
-	for i, freq := range state.PCoreFreq {
-		if state.PCoreFreqHistory[i] == nil {
-			state.PCoreFreqHistory[i] = make([]float64, 0, 30)
-		}
-		state.PCoreFreqHistory[i] = models.AddToHistory(state.PCoreFreqHistory[i], float64(freq), 30)
-	}
+	// CPU frequency history is now updated in organizeCPUFrequencies
 
 	// Update interrupt totals (convert float rates to int for display)
 	if ipiTotal > 0 {
@@ -458,8 +534,10 @@ func ParsePowerMetricsOutput(output string, state *models.MetricsState) {
 		state.TotalInterrupts = int(interrupts)
 	}
 
-	// Update per-CPU interrupt history
-	for cpu, total := range state.PerCPUInterrupts {
+	// Update per-CPU interrupt history for all known CPUs
+	// Since we reset all CPUs to 0 at the start, this will include zeros for missing CPUs
+	for cpu := range state.AllSeenCPUs {
+		total := state.PerCPUInterrupts[cpu] // Will be 0 if CPU wasn't in this sample
 		if state.PerCPUInterruptHistory[cpu] == nil {
 			state.PerCPUInterruptHistory[cpu] = make([]float64, 0, 30)
 		}
@@ -502,74 +580,120 @@ func convertToMB(value float64, line string) float64 {
 	return value
 }
 
-// organizeCPUFrequencies intelligently organizes CPU frequencies based on detected architecture
+// organizeCPUFrequencies categorizes CPUs based on cluster information parsed from powermetrics
 func organizeCPUFrequencies(state *models.MetricsState) {
 	if state.AllCpuFreq == nil || len(state.AllCpuFreq) == 0 {
 		return
 	}
 
-	// Find the range of CPU numbers
-	minCPU, maxCPU := 999, -1
-	for cpu := range state.AllCpuFreq {
-		if cpu < minCPU {
-			minCPU = cpu
-		}
-		if cpu > maxCPU {
-			maxCPU = cpu
+	// Separate CPUs based on cluster membership information
+	ecoreCPUs := make([]int, 0)
+	pcoreCPUs := make([]int, 0)
+
+	// Check if we have cluster membership info
+	hasClusterInfo := false
+	if state.AllSeenCPUs != nil {
+		for key := range state.AllSeenCPUs {
+			if strings.HasPrefix(key, "E-CPU") || strings.HasPrefix(key, "P-CPU") {
+				hasClusterInfo = true
+				break
+			}
 		}
 	}
 
-	hasECores := len(state.ECoreFreq) > 0
-	hasPCores := len(state.PCoreFreq) > 0
-
-	if hasECores || hasPCores {
-		// Apple Silicon with explicit E/P core clusters
-		// We need to figure out which CPUs belong to which cluster
-
-		// Strategy: Look for patterns in the CPU numbering and frequencies
-		// Usually E-cores are lower numbered and have lower max frequencies
-
-		// First, find the natural break between E-cores and P-cores
-		// E-cores typically have lower frequencies
-		frequencies := make([]int, 0, len(state.AllCpuFreq))
-		for _, freq := range state.AllCpuFreq {
-			frequencies = append(frequencies, freq)
+	if hasClusterInfo {
+		// Use cluster membership information from parsing
+		for key := range state.AllSeenCPUs {
+			if strings.HasPrefix(key, "E-CPU") {
+				// Extract CPU number from "E-CPU0", "E-CPU1", etc.
+				cpuNumStr := strings.TrimPrefix(key, "E-CPU")
+				if cpuNum, err := strconv.Atoi(cpuNumStr); err == nil {
+					ecoreCPUs = append(ecoreCPUs, cpuNum)
+				}
+			} else if strings.HasPrefix(key, "P-CPU") {
+				// Extract CPU number from "P-CPU2", "P-CPU3", etc.
+				cpuNumStr := strings.TrimPrefix(key, "P-CPU")
+				if cpuNum, err := strconv.Atoi(cpuNumStr); err == nil {
+					pcoreCPUs = append(pcoreCPUs, cpuNum)
+				}
+			}
 		}
 
-		// Simple heuristic: CPUs with consistently lower frequencies are likely E-cores
-		// This works because E-cores typically max out around 2.5 GHz while P-cores go up to 3.5+ GHz
-
-		// Clear and rebuild the frequency arrays with individual CPU data
-		if hasECores {
-			state.ECoreFreq = []int{}
+		// Sort CPU lists for consistent display
+		for i := 0; i < len(ecoreCPUs); i++ {
+			for j := i + 1; j < len(ecoreCPUs); j++ {
+				if ecoreCPUs[i] > ecoreCPUs[j] {
+					ecoreCPUs[i], ecoreCPUs[j] = ecoreCPUs[j], ecoreCPUs[i]
+				}
+			}
 		}
-		if hasPCores {
-			state.PCoreFreq = []int{}
-		}
-
-		// Look for a gap in CPU numbering or frequency patterns
-		for i := minCPU; i <= maxCPU; i++ {
-			if freq, exists := state.AllCpuFreq[i]; exists {
-				// Simple heuristic: first few CPUs are usually E-cores on Apple Silicon
-				// More sophisticated detection could look at frequency ranges
-				if hasECores && i < 2 { // Typical M1/M2 has 2-4 E-cores numbered first
-					state.ECoreFreq = append(state.ECoreFreq, freq)
-				} else if hasPCores {
-					state.PCoreFreq = append(state.PCoreFreq, freq)
+		for i := 0; i < len(pcoreCPUs); i++ {
+			for j := i + 1; j < len(pcoreCPUs); j++ {
+				if pcoreCPUs[i] > pcoreCPUs[j] {
+					pcoreCPUs[i], pcoreCPUs[j] = pcoreCPUs[j], pcoreCPUs[i]
 				}
 			}
 		}
 	} else {
-		// Intel Mac or unknown architecture - just show all cores as regular cores
-		// Convert map to sorted array
-		state.PCoreFreq = []int{}
-		for i := minCPU; i <= maxCPU; i++ {
-			if freq, exists := state.AllCpuFreq[i]; exists {
-				state.PCoreFreq = append(state.PCoreFreq, freq)
+		// Fallback: No cluster info, categorize all CPUs as P-cores (Intel Mac)
+		for cpuID := range state.AllCpuFreq {
+			pcoreCPUs = append(pcoreCPUs, cpuID)
+		}
+		// Sort for consistency
+		for i := 0; i < len(pcoreCPUs); i++ {
+			for j := i + 1; j < len(pcoreCPUs); j++ {
+				if pcoreCPUs[i] > pcoreCPUs[j] {
+					pcoreCPUs[i], pcoreCPUs[j] = pcoreCPUs[j], pcoreCPUs[i]
+				}
 			}
 		}
 	}
 
-	// Clear the temporary map
-	state.AllCpuFreq = nil
+	// Build E-core frequencies
+	newECores := make([]int, 0, len(ecoreCPUs))
+	for i, cpuID := range ecoreCPUs {
+		freq := 0
+		if f, exists := state.AllCpuFreq[cpuID]; exists {
+			freq = f
+		}
+		newECores = append(newECores, freq)
+
+		// Update history
+		if state.ECoreFreqHistory[i] == nil {
+			state.ECoreFreqHistory[i] = make([]float64, 0, 30)
+		}
+		state.ECoreFreqHistory[i] = models.AddToHistory(
+			state.ECoreFreqHistory[i], float64(freq), 30)
+	}
+
+	// Build P-core frequencies
+	newPCores := make([]int, 0, len(pcoreCPUs))
+	for i, cpuID := range pcoreCPUs {
+		freq := 0
+		if f, exists := state.AllCpuFreq[cpuID]; exists {
+			freq = f
+		}
+		newPCores = append(newPCores, freq)
+
+		// Update history
+		if state.PCoreFreqHistory[i] == nil {
+			state.PCoreFreqHistory[i] = make([]float64, 0, 30)
+		}
+		state.PCoreFreqHistory[i] = models.AddToHistory(
+			state.PCoreFreqHistory[i], float64(freq), 30)
+	}
+
+	// Update state
+	state.ECoreFreq = newECores
+	state.PCoreFreq = newPCores
+
+	// Update max cores seen
+	if len(state.ECoreFreq) > state.MaxECores {
+		state.MaxECores = len(state.ECoreFreq)
+	}
+	if len(state.PCoreFreq) > state.MaxPCores {
+		state.MaxPCores = len(state.PCoreFreq)
+	}
+
+	// Keep the AllCpuFreq for reference/debugging
 }

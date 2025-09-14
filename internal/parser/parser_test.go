@@ -24,8 +24,8 @@ func TestParsePowerMetricsOutput(t *testing.T) {
 	// Parse the output
 	ParsePowerMetricsOutput(string(content), state)
 
-	// Test that we got processes
-	t.Run("Processes", func(t *testing.T) {
+	// Test that we got processes and coalitions
+	t.Run("Processes and Coalitions", func(t *testing.T) {
 		state.Mu.RLock()
 		defer state.Mu.RUnlock()
 
@@ -33,9 +33,18 @@ func TestParsePowerMetricsOutput(t *testing.T) {
 			t.Error("Expected processes to be parsed, but got 0")
 		}
 
-		// With --show-all we should have many more processes
+		if len(state.Coalitions) == 0 {
+			t.Error("Expected coalitions to be parsed, but got 0")
+		}
+
+		// With --show-all we should have many more processes (subprocesses)
 		if len(state.Processes) < 50 {
-			t.Errorf("Expected at least 50 processes with --show-all, got %d", len(state.Processes))
+			t.Errorf("Expected at least 50 subprocesses with --show-all, got %d", len(state.Processes))
+		}
+
+		// Should have fewer coalitions than processes
+		if len(state.Coalitions) >= len(state.Processes) {
+			t.Errorf("Expected fewer coalitions (%d) than processes (%d)", len(state.Coalitions), len(state.Processes))
 		}
 
 		// Check specific process data
@@ -50,10 +59,51 @@ func TestParsePowerMetricsOutput(t *testing.T) {
 			if proc.CPUPercent < 0 {
 				t.Error("Process CPU percent should not be negative")
 			}
-			t.Logf("First process: %s (PID: %d) CPU: %.2f%%", proc.Name, proc.PID, proc.CPUPercent)
+			if proc.CoalitionName == "" {
+				t.Error("Process coalition name should not be empty")
+			}
+			t.Logf("First subprocess: %s (PID: %d) Coalition: %s CPU: %.2f%%", proc.Name, proc.PID, proc.CoalitionName, proc.CPUPercent)
 		}
 
-		t.Logf("Parsed %d processes", len(state.Processes))
+		// Check specific coalition data
+		if len(state.Coalitions) > 0 {
+			coalition := state.Coalitions[0]
+			if coalition.Name == "" {
+				t.Error("Coalition name should not be empty")
+			}
+			if coalition.CoalitionID == 0 {
+				t.Error("Coalition ID should not be 0")
+			}
+			if coalition.CPUPercent < 0 {
+				t.Error("Coalition CPU percent should not be negative")
+			}
+			if len(coalition.Subprocesses) == 0 {
+				t.Error("Coalition should have subprocesses")
+			}
+			t.Logf("First coalition: %s (ID: %d) CPU: %.2f%% Subprocesses: %d", coalition.Name, coalition.CoalitionID, coalition.CPUPercent, len(coalition.Subprocesses))
+		}
+
+		// Verify hierarchy integrity
+		for _, proc := range state.Processes {
+			found := false
+			for _, coalition := range state.Coalitions {
+				if coalition.Name == proc.CoalitionName {
+					// Check if this process is in the coalition's subprocess list
+					for _, subprocess := range coalition.Subprocesses {
+						if subprocess.PID == proc.PID {
+							found = true
+							break
+						}
+					}
+					break
+				}
+			}
+			if !found {
+				t.Errorf("Process %s (PID: %d) claims to belong to coalition %s but is not in any coalition's subprocess list", proc.Name, proc.PID, proc.CoalitionName)
+			}
+		}
+
+		t.Logf("Parsed %d processes and %d coalitions", len(state.Processes), len(state.Coalitions))
 	})
 
 	// Test interrupts parsing
@@ -141,12 +191,35 @@ func TestParsePowerMetricsOutput(t *testing.T) {
 		state.Mu.RLock()
 		defer state.Mu.RUnlock()
 
-		t.Logf("E-Core frequencies: %v", state.ECoreFreq)
-		t.Logf("P-Core frequencies: %v", state.PCoreFreq)
+		t.Logf("E-Core frequencies (CPU 0-1): %v", state.ECoreFreq)
+		t.Logf("P-Core frequencies (CPU 2-9): %v", state.PCoreFreq)
 		t.Logf("All CPU frequencies: %v", state.AllCpuFreq)
 
-		if len(state.AllCpuFreq) == 0 {
-			t.Log("No CPU frequency data parsed (might be expected depending on sample)")
+		// Check that we have reasonable number of cores (dynamic based on actual hardware)
+		if len(state.ECoreFreq) == 0 && len(state.PCoreFreq) == 0 {
+			t.Error("Expected to find some CPU cores, but got none")
+		}
+
+		// Apple Silicon typically has E-cores, Intel Macs typically don't
+		if len(state.ECoreFreq) > 0 {
+			t.Logf("Found %d E-cores (Apple Silicon detected)", len(state.ECoreFreq))
+			if len(state.ECoreFreq) > 4 {
+				t.Errorf("Unexpected number of E-cores: %d (max expected: 4)", len(state.ECoreFreq))
+			}
+		}
+
+		if len(state.PCoreFreq) > 0 {
+			t.Logf("Found %d P-cores", len(state.PCoreFreq))
+			if len(state.PCoreFreq) > 16 {
+				t.Errorf("Unexpected number of P-cores: %d (max expected: 16)", len(state.PCoreFreq))
+			}
+		}
+
+		// Check that we have individual CPU frequencies
+		for i := 0; i < 10; i++ {
+			if freq, exists := state.AllCpuFreq[i]; exists && freq > 0 {
+				t.Logf("CPU %d: %d MHz", i, freq)
+			}
 		}
 	})
 }
@@ -191,6 +264,49 @@ func TestProcessRegex(t *testing.T) {
 	}
 }
 
+func TestCPUFrequencyRegex(t *testing.T) {
+	// Test CPU frequency regex with sample data
+	testCases := []struct {
+		line     string
+		expected map[string]string
+	}{
+		{
+			line: "CPU 0 frequency: 1058 MHz",
+			expected: map[string]string{"cpu": "0", "freq": "1058"},
+		},
+		{
+			line: "CPU 1 frequency: 1051 MHz",
+			expected: map[string]string{"cpu": "1", "freq": "1051"},
+		},
+		{
+			line: "CPU 2 frequency: 960 MHz",
+			expected: map[string]string{"cpu": "2", "freq": "960"},
+		},
+		{
+			line: "CPU 9 frequency: 1050 MHz",
+			expected: map[string]string{"cpu": "9", "freq": "1050"},
+		},
+	}
+
+	cpuFreqRegex := regexp.MustCompile(`CPU (\d+) frequency:\s+([0-9]+)\s*MHz`)
+
+	for _, tc := range testCases {
+		t.Run(tc.line, func(t *testing.T) {
+			matches := cpuFreqRegex.FindStringSubmatch(tc.line)
+			if matches == nil {
+				t.Errorf("CPU frequency regex failed to match line: %s", tc.line)
+				return
+			}
+			if matches[1] != tc.expected["cpu"] {
+				t.Errorf("Expected CPU %s, got %s", tc.expected["cpu"], matches[1])
+			}
+			if matches[2] != tc.expected["freq"] {
+				t.Errorf("Expected frequency %s, got %s", tc.expected["freq"], matches[2])
+			}
+		})
+	}
+}
+
 func TestParsePowerMetricsOutputAll(t *testing.T) {
 	// Test with --show-all format
 	sample, err := os.ReadFile("../../sample_output_all.txt")
@@ -207,11 +323,19 @@ func TestParsePowerMetricsOutputAll(t *testing.T) {
 		t.Errorf("Expected at least 50 processes with --show-all, got %d", len(state.Processes))
 	}
 
+	// Test that we have coalitions
+	if len(state.Coalitions) == 0 {
+		t.Error("Expected to find coalitions, but got 0")
+	}
+
 	// Check some known processes from the sample
 	foundGhostty := false
 	foundNode := false
 	foundChrome := false
+	foundGhosttyCoalition := false
+	foundChromeCoalition := false
 
+	// Check subprocesses
 	for _, proc := range state.Processes {
 		if strings.Contains(proc.Name, "ghostty") {
 			foundGhostty = true
@@ -224,17 +348,44 @@ func TestParsePowerMetricsOutputAll(t *testing.T) {
 		}
 	}
 
-	if !foundGhostty {
-		t.Error("Expected to find ghostty process")
-	}
-	if !foundNode {
-		t.Error("Expected to find node process")
-	}
-	if !foundChrome {
-		t.Error("Expected to find Chrome process")
+	// Check coalitions
+	for _, coalition := range state.Coalitions {
+		if strings.Contains(coalition.Name, "ghostty") {
+			foundGhosttyCoalition = true
+		}
+		if strings.Contains(coalition.Name, "Chrome") {
+			foundChromeCoalition = true
+		}
 	}
 
-	t.Logf("Parsed %d processes from --show-all format", len(state.Processes))
+	if !foundGhostty {
+		t.Error("Expected to find ghostty subprocess")
+	}
+	if !foundNode {
+		t.Error("Expected to find node subprocess")
+	}
+	if !foundChrome {
+		t.Error("Expected to find Chrome subprocess")
+	}
+	if !foundGhosttyCoalition {
+		t.Error("Expected to find ghostty coalition")
+	}
+	if !foundChromeCoalition {
+		t.Error("Expected to find Chrome coalition")
+	}
+
+	// Test CPU frequency parsing (dynamic based on sample data)
+	totalCores := len(state.ECoreFreq) + len(state.PCoreFreq)
+	if totalCores == 0 {
+		t.Error("Expected to find CPU cores, but got none")
+	} else {
+		t.Logf("Found %d E-cores and %d P-cores (total: %d)",
+			len(state.ECoreFreq), len(state.PCoreFreq), totalCores)
+	}
+
+	t.Logf("Parsed %d processes and %d coalitions from --show-all format", len(state.Processes), len(state.Coalitions))
+	t.Logf("E-Core frequencies: %v", state.ECoreFreq)
+	t.Logf("P-Core frequencies: %v", state.PCoreFreq)
 }
 
 func TestInterruptRegex(t *testing.T) {

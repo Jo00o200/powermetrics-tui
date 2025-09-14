@@ -18,6 +18,7 @@ type MetricsState struct {
 	PerCPUInterrupts map[string]float64 // CPU identifier -> interrupt rate
 	PerCPUIPIs       map[string]float64 // CPU identifier -> IPI rate
 	PerCPUTimers     map[string]float64 // CPU identifier -> Timer rate
+	AllSeenCPUs      map[string]bool    // Track all CPUs ever seen for consistent display
 
 	// Per-CPU interrupt history for sparklines
 	PerCPUInterruptHistory map[string][]float64 // CPU identifier -> interrupt history
@@ -34,6 +35,8 @@ type MetricsState struct {
 	PCoreFreq  []int
 	GPUFreq    int
 	AllCpuFreq map[int]int // Temporary storage for all CPU frequencies
+	MaxECores  int         // Maximum number of E-cores ever seen
+	MaxPCores  int         // Maximum number of P-cores ever seen
 
 	// CPU frequency history (per core)
 	ECoreFreqHistory map[int][]float64 // Core index -> frequency history
@@ -62,8 +65,11 @@ type MetricsState struct {
 
 	// Process tracking
 	Processes []ProcessInfo
+	Coalitions []ProcessCoalition
 	ProcessCPUHistory map[int][]float64 // PID -> CPU history
 	ProcessMemHistory map[int][]float64 // PID -> Memory history
+	CoalitionCPUHistory map[int][]float64 // Coalition ID -> CPU history
+	CoalitionMemHistory map[int][]float64 // Coalition ID -> Memory history
 
 	// Recently exited processes tracking
 	RecentlyExited []ExitedProcessInfo
@@ -76,10 +82,24 @@ type MetricsState struct {
 	UpdateErrors int
 }
 
-// ProcessInfo represents a single process
+// ProcessCoalition represents a process coalition (parent process group)
+type ProcessCoalition struct {
+	CoalitionID   int
+	Name          string
+	CPUPercent    float64
+	MemoryMB      float64
+	DiskMB        float64
+	NetworkMB     float64
+	Subprocesses  []ProcessInfo
+	CPUHistory    []float64 // Last 10 samples for sparkline
+	MemoryHistory []float64 // Last 10 samples for sparkline
+}
+
+// ProcessInfo represents a single process (subprocess within a coalition)
 type ProcessInfo struct {
 	PID           int
 	Name          string
+	CoalitionName string    // Name of parent coalition
 	CPUPercent    float64
 	MemoryMB      float64
 	DiskMB        float64
@@ -91,6 +111,7 @@ type ProcessInfo struct {
 // ExitedProcessInfo represents a process that recently exited
 type ExitedProcessInfo struct {
 	Name         string
+	PIDs         []int     // List of all PIDs that exited for this process name
 	Occurrences  int       // Number of times this process has appeared and exited
 	LastExitTime time.Time // When the process last exited
 	FirstSeenTime time.Time // When we first saw this process name
@@ -120,11 +141,15 @@ func NewMetricsState() *MetricsState {
 		Temperature: make(map[string]float64),
 		ProcessCPUHistory: make(map[int][]float64),
 		ProcessMemHistory: make(map[int][]float64),
+		Coalitions: make([]ProcessCoalition, 0),
+		CoalitionCPUHistory: make(map[int][]float64),
+		CoalitionMemHistory: make(map[int][]float64),
 		ECoreFreqHistory: make(map[int][]float64),
 		PCoreFreqHistory: make(map[int][]float64),
 		PerCPUInterrupts: make(map[string]float64),
 		PerCPUIPIs: make(map[string]float64),
 		PerCPUTimers: make(map[string]float64),
+		AllSeenCPUs: make(map[string]bool),
 		PerCPUInterruptHistory: make(map[string][]float64),
 		RecentlyExited: make([]ExitedProcessInfo, 0),
 		LastSeenPIDs: make(map[int]time.Time),
